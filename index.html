@@ -703,7 +703,40 @@
     document.getElementById('ocr-file').click();
   }
 
-  function runOcr(input) {
+  function preprocessImage(file) {
+    return new Promise(function(resolve) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        // Scale: Tesseract works best around 1200-2400px
+        var largest = Math.max(img.width, img.height);
+        var scale = 1;
+        if (largest < 1200) scale = 1200 / largest;
+        if (largest * scale > 2400) scale = 2400 / largest;
+        var w = Math.round(img.width * scale);
+        var h = Math.round(img.height * scale);
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        // Grayscale + strong contrast boost
+        var id = ctx.getImageData(0, 0, w, h);
+        var d = id.data;
+        for (var i = 0; i < d.length; i += 4) {
+          var g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+          g = Math.min(255, Math.max(0, (g - 128) * 2.0 + 128));
+          d[i] = d[i+1] = d[i+2] = g;
+        }
+        ctx.putImageData(id, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(canvas);
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
+  async function runOcr(input) {
     var files = Array.from(input.files);
     if (!files.length) return;
     input.value = '';
@@ -718,56 +751,76 @@
 
     function updateStatus() {
       document.getElementById('ocr-status').textContent =
-        done < total ? ('辨識中… ' + done + ' / ' + total + ' 張') : ('全部完成，共找到 ' + ocrResults.length + ' 個 S/N');
+        done < total
+          ? ('辨識中… ' + done + ' / ' + total + ' 張')
+          : ('全部完成，共找到 ' + ocrResults.length + ' 個 S/N');
       document.getElementById('ocr-bar').style.width = Math.round((done / total) * 100) + '%';
     }
 
     updateStatus();
 
-    var chain = Promise.resolve();
-    files.forEach(function (file) {
-      chain = chain.then(function () {
-        return Tesseract.recognize(file, 'eng', {
-          logger: function (m) {
+    for (var fi = 0; fi < files.length; fi++) {
+      try {
+        var canvas = await preprocessImage(files[fi]);
+        var fidx = fi;
+        var result = await Tesseract.recognize(canvas, 'eng', {
+          logger: function(m) {
             if (m.status === 'recognizing text') {
-              var pct = (done + m.progress) / total * 100;
-              document.getElementById('ocr-bar').style.width = Math.round(pct) + '%';
+              document.getElementById('ocr-bar').style.width =
+                Math.round((fidx + m.progress) / total * 100) + '%';
             }
-          }
-        }).then(function (result) {
-          extractSN(result.data.text).forEach(function (sn) {
-            if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
-          });
-          done++;
-          updateStatus();
-          renderOcrList();
-          document.getElementById('ocr-confirm').style.display = 'block';
+          },
+          tessedit_pageseg_mode: '11',
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/',
         });
-      });
-    });
+        extractSN(result.data.text).forEach(function(sn) {
+          if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
+        });
+      } catch(e) { /* 略過這張，繼續下一張 */ }
+      done++;
+      updateStatus();
+      renderOcrList();
+      document.getElementById('ocr-confirm').style.display = 'block';
+    }
 
-    chain.catch(function () {
-      document.getElementById('ocr-status').textContent = '部分照片辨識失敗，已顯示其餘結果';
-    });
+    if (done === total && ocrResults.length === 0) {
+      document.getElementById('ocr-status').textContent = '未找到 S/N，請手動輸入或重拍更清晰的照片';
+    }
   }
 
-  function extractSN(text) {
+  function extractSN(rawText) {
+    var text = rawText.replace(/\r/g, '\n');
     var found = [];
     var seen = {};
 
-    // 方法1: SN / S/N 標籤後面的值
-    var labelPattern = /(?:S[\s\/\-]?N)\s*[:\-]?\s*([A-Za-z0-9\-]{4,})/gi;
-    var m;
-    while ((m = labelPattern.exec(text)) !== null) {
-      var val = m[1].trim();
+    function add(val) {
+      // Strip non-alphanumeric/dash, uppercase
+      val = val.replace(/[^A-Za-z0-9\-]/g, '').toUpperCase();
+      if (val.length < 4) return;
       if (!seen[val]) { seen[val] = true; found.push(val); }
     }
 
-    // 方法2: MT 開頭的字串
-    var mtPattern = /\bMT[A-Za-z0-9\-]{3,}/g;
-    while ((m = mtPattern.exec(text)) !== null) {
-      var val = m[0].trim();
-      if (!seen[val]) { seen[val] = true; found.push(val); }
+    var m;
+
+    // Pattern 1: S/N / SN / S-N / S.N label
+    var p1 = /S[\s\/\.\-]?N\s*[:\-=]?\s*([A-Za-z0-9][A-Za-z0-9\-]{3,30})/gi;
+    while ((m = p1.exec(text)) !== null) add(m[1]);
+
+    // Pattern 2: Serial / Serial No / Serial Number
+    var p2 = /[Ss]erial\s*(?:[Nn](?:o\.?|umber)?)?\s*[:\-=]?\s*([A-Za-z0-9][A-Za-z0-9\-]{3,30})/gi;
+    while ((m = p2.exec(text)) !== null) add(m[1]);
+
+    // Pattern 3: MT prefix (Mellanox/common GBIC format)
+    var p3 = /\bMT[A-Za-z0-9\-]{3,}/gi;
+    while ((m = p3.exec(text)) !== null) add(m[0]);
+
+    // Pattern 4: standalone long alphanumeric (2-4 letters + 4+ digits) – fallback
+    if (found.length === 0) {
+      var upper = text.toUpperCase();
+      var p4 = /\b[A-Z]{1,4}[0-9]{4,}[A-Z0-9]{0,12}\b/g;
+      while ((m = p4.exec(upper)) !== null) {
+        if (m[0].length >= 6) add(m[0]);
+      }
     }
 
     return found;
