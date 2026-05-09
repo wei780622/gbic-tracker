@@ -306,8 +306,7 @@
     }
     document.getElementById('ii-date').value = today();
     document.getElementById('io-date').value = today();
-    var d30 = new Date(); d30.setDate(d30.getDate() - 30);
-    document.getElementById('in-date-from').value = d30.toISOString().slice(0, 10);
+    document.getElementById('in-date-from').value = today();
     document.getElementById('in-date-to').value = today();
 
     callApi({ action: 'getOptions' }).then(function (data) {
