@@ -586,30 +586,48 @@
   }
 
   // ── Admin ────────────────────────────────────────────────────────
+  var lastRackQuery = '';
+  var lastBarcodeQuery = '';
+
+  function deleteRecord(sheetName, rowIndex, refreshFn) {
+    if (!confirm('確定要刪除這筆紀錄？')) return;
+    callApi({ action: 'deleteRow', sheetName: sheetName, rowIndex: rowIndex })
+      .then(function (d) {
+        if (d.success) refreshFn();
+        else alert('刪除失敗：' + (d.error || '未知錯誤'));
+      }).catch(function () { alert('網路錯誤'); });
+  }
+
   function adminQueryRack() {
     var rack = document.getElementById('a-rack').value; if (!rack) return;
+    lastRackQuery = rack;
     callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
       var el = document.getElementById('res-rack');
       if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無設備上架</p>'; return; }
-      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>工程師</th><th>時間</th></tr>' +
+      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>工程師</th><th>時間</th><th></th></tr>' +
         data.map(function (r) {
+          var row = r._row; var sheet = r._sheet;
           return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
             '<td>' + (r.model ? esc(r.model) : '—') + '</td><td>' + esc(r.engineer) + '</td>' +
-            '<td>' + esc(fmtDate(r.timestamp)) + '</td></tr>';
+            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
+            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryRack)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
 
   function adminQueryBarcode() {
     var barcode = document.getElementById('a-barcode').value.trim(); if (!barcode) return;
+    lastBarcodeQuery = barcode;
     callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
       var el = document.getElementById('res-barcode');
       if (!data.length) { el.innerHTML = '<p class="no-data">查無此 S/N 紀錄</p>'; return; }
-      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>工程師</th></tr>' +
+      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>工程師</th><th></th></tr>' +
         data.map(function (r) {
+          var row = r._row; var sheet = r._sheet;
           return '<tr><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td class="' + (r.type === '上架' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
-            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td><td>' + esc(r.engineer) + '</td></tr>';
+            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td><td>' + esc(r.engineer) + '</td>' +
+            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
@@ -619,8 +637,9 @@
       var el = document.getElementById('res-out');
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無出庫紀錄</p>'; return; }
       el.innerHTML = '<table>' +
-        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th></tr>' +
+        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th><th></th></tr>' +
         data.map(function (r) {
+          var row = r._row; var sheet = r._sheet;
           return '<tr>' +
             '<td>' + esc(fmtDate(r.date)) + '</td>' +
             '<td>' + esc(r.device) + '</td>' +
@@ -629,6 +648,7 @@
             '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
             '<td>' + esc(r.csiStaff) + '</td>' +
             '<td>' + esc(r.recipient) + '</td>' +
+            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryOut)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td>' +
             '</tr>';
         }).join('') + '</table>';
     }).catch(function () {
