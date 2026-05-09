@@ -640,7 +640,8 @@
   function adminQueryIn() {
     callApi({ action: 'queryInventoryIn' }).then(function (data) {
       var el = document.getElementById('res-in');
-      if (!data.length) { el.innerHTML = '<p class="no-data">尚無入庫紀錄</p>'; return; }
+      if (data && data.error) { el.innerHTML = '<p class="no-data">錯誤：' + esc(data.error) + '</p>'; return; }
+      if (!Array.isArray(data) || !data.length) { el.innerHTML = '<p class="no-data">尚無入庫紀錄</p>'; return; }
       el.innerHTML = '<table>' +
         '<tr><th>日期</th><th>型號</th><th>數量</th><th>簽收人</th><th>S/N</th><th>P/N</th><th></th></tr>' +
         data.map(function (r) {
