@@ -19,8 +19,8 @@
       font-size: 17px; cursor: pointer; text-align: center; font-weight: 500;
     }
     .btn:active { opacity: 0.85; }
-    .btn-green  { background: #0f9d58; }
-    .btn-grey   { background: #757575; }
+    .btn-green { background: #0f9d58; }
+    .btn-grey  { background: #757575; }
     .form-group { margin: 14px 0; }
     label { display: block; font-size: 13px; color: #666; margin-bottom: 5px; }
     input[type=text], select {
@@ -29,7 +29,7 @@
     }
     #scanner-wrap {
       position: relative; width: 100%; background: #000;
-      border-radius: 10px; overflow: hidden; margin: 14px 0;
+      border-radius: 10px; overflow: hidden; margin: 10px 0;
       aspect-ratio: 1;
     }
     #scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -39,7 +39,7 @@
       width: 60%; aspect-ratio: 1; border: 3px solid #1a73e8; border-radius: 8px;
       box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
     }
-    .hint { text-align: center; color: #888; font-size: 13px; margin: 6px 0 12px; }
+    .hint { text-align: center; color: #888; font-size: 13px; margin: 4px 0 8px; }
     .card { background: white; border-radius: 10px; padding: 16px; margin: 10px 0; }
     .card p { margin: 5px 0; font-size: 14px; line-height: 1.5; }
     .card .lbl { color: #888; }
@@ -52,6 +52,33 @@
     th { background: #f0f4ff; font-weight: 600; white-space: nowrap; }
     hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
     .no-data { color: #888; font-size: 14px; text-align: center; padding: 16px; }
+
+    /* Scanned list chips */
+    #scanned-list { margin: 8px 0; }
+    .chip {
+      display: flex; align-items: center; justify-content: space-between;
+      background: white; border-radius: 8px; padding: 10px 12px;
+      margin: 6px 0; font-size: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .chip-info { flex: 1; }
+    .chip-barcode { font-weight: 600; color: #333; }
+    .chip-model { font-size: 12px; color: #888; margin-top: 2px; }
+    .chip-del { background: none; border: none; color: #d93025; font-size: 20px;
+                cursor: pointer; padding: 0 4px; line-height: 1; }
+    .scan-count { font-size: 13px; color: #1a73e8; font-weight: 600; text-align: center; margin: 4px 0; }
+
+    /* Batch form item rows */
+    .batch-item {
+      background: white; border-radius: 8px; padding: 12px;
+      margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .batch-item-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px;
+    }
+    .batch-item-barcode { font-weight: 600; font-size: 14px; }
+    .batch-item-model { font-size: 12px; color: #888; }
+    .batch-item select { font-size: 14px; padding: 8px 10px; }
   </style>
 </head>
 <body>
@@ -64,7 +91,7 @@
   <div id="admin-btn-wrap"></div>
 </div>
 
-<!-- Page: Scan -->
+<!-- Page: Scan (batch) -->
 <div id="pg-scan" class="page">
   <h2 id="scan-title">掃描 GBIC 條碼</h2>
   <div id="scanner-wrap">
@@ -72,36 +99,39 @@
     <canvas id="scanner-canvas"></canvas>
     <div class="scan-frame"></div>
   </div>
-  <p class="hint">將條碼對準藍框內</p>
-  <button class="btn btn-grey" onclick="stopScan(); showPage('pg-main')">取消</button>
+  <p class="hint">將條碼對準框內，可連續掃多個</p>
+  <div class="scan-count" id="scan-count"></div>
+  <div id="scanned-list"></div>
+  <button class="btn btn-green" id="btn-done" onclick="goToBatchForm()" style="display:none">✓ 完成掃描，填寫資料</button>
+  <button class="btn btn-grey" style="margin-top:4px" onclick="stopScan(); scannedItems=[]; showPage('pg-main')">取消</button>
 </div>
 
-<!-- Page: Form -->
-<div id="pg-form" class="page">
-  <h2 id="form-title">領出 GBIC</h2>
-  <div class="form-group">
-    <label>GBIC 條碼</label>
-    <input type="text" id="f-barcode" placeholder="掃碼後自動帶入">
-  </div>
-  <div class="form-group">
-    <label>GBIC 型號</label>
-    <input type="text" id="f-model" placeholder="自動帶入，可手動修改">
-  </div>
+<!-- Page: Batch Form -->
+<div id="pg-batch" class="page">
+  <h2 id="batch-title">領出 GBIC</h2>
+
   <div class="form-group">
     <label>工程師姓名</label>
-    <input type="text" id="f-engineer" placeholder="請輸入姓名" autocomplete="name">
+    <input type="text" id="b-engineer" placeholder="請輸入姓名" autocomplete="name">
   </div>
   <div class="form-group">
     <label>機櫃編號</label>
-    <select id="f-rack"><option value="">-- 請選擇 --</option></select>
+    <select id="b-rack"><option value="">-- 請選擇 --</option></select>
   </div>
   <div class="form-group">
-    <label>U 數</label>
-    <select id="f-upos"><option value="">-- 請選擇 --</option></select>
+    <label>預設 U 數（套用到所有未設定的項目）</label>
+    <select id="b-upos-default" onchange="applyDefaultU()">
+      <option value="">-- 選擇預設 --</option>
+    </select>
   </div>
-  <p id="form-err" class="err"></p>
-  <button class="btn" onclick="submitForm()">✓ 送出</button>
-  <button class="btn btn-grey" onclick="showPage('pg-main')">取消</button>
+
+  <hr>
+
+  <div id="batch-items"></div>
+
+  <p id="batch-err" class="err"></p>
+  <button class="btn" onclick="submitBatch()">✓ 全部送出</button>
+  <button class="btn btn-grey" onclick="showPage('pg-scan'); startScan()">← 繼續掃描</button>
 </div>
 
 <!-- Page: Success -->
@@ -109,7 +139,7 @@
   <div class="big-check">✅</div>
   <h2 style="text-align:center" id="ok-title">送出成功</h2>
   <div class="card" id="ok-detail"></div>
-  <button class="btn" style="margin-top:20px" onclick="showPage('pg-main')">再掃一筆</button>
+  <button class="btn" style="margin-top:20px" onclick="resetAndHome()">再掃一批</button>
 </div>
 
 <!-- Page: Admin -->
@@ -148,6 +178,10 @@
   let currentAction = '';
   let scanStream = null;
   let scanTimer = null;
+  let scannedItems = [];  // [{barcode, model}]
+  let rackOptions = [];
+  let uOptions = [];
+  let scanCooldown = false;
 
   function esc(str) {
     return String(str)
@@ -163,44 +197,58 @@
         '<hr><button class="btn btn-grey" onclick="showPage(\'pg-admin\')">🔍 查詢 / 匯出</button>';
     }
     callApi({ action: 'getOptions' }).then(function (data) {
-      fillSelect('f-rack', data.racks);
-      fillSelect('f-upos', data.uNumbers);
-      fillSelect('a-rack', data.racks);
+      rackOptions = data.racks;
+      uOptions = data.uNumbers;
+      fillSelect('a-rack', rackOptions);
     }).catch(function () {
       alert('無法載入選單，請重新整理頁面');
     });
   };
 
   function showPage(id) {
-    document.querySelectorAll('.page').forEach(function (p) {
-      p.classList.remove('active');
-    });
+    document.querySelectorAll('.page').forEach(function (p) { p.classList.remove('active'); });
     document.getElementById(id).classList.add('active');
     window.scrollTo(0, 0);
   }
 
   function fillSelect(id, values) {
     var sel = document.getElementById(id);
+    var existing = sel.options.length;
+    if (existing > 1) return;
     values.forEach(function (v) {
       var opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
+      opt.value = v; opt.textContent = v;
       sel.appendChild(opt);
     });
   }
 
+  function buildSelect(id, values, placeholder) {
+    var html = '<select id="' + id + '"><option value="">' + placeholder + '</option>';
+    values.forEach(function (v) { html += '<option value="' + esc(v) + '">' + esc(v) + '</option>'; });
+    return html + '</select>';
+  }
+
+  // ── Action start ────────────────────────────────────────────────
   function startAction(action) {
     currentAction = action;
+    scannedItems = [];
     document.getElementById('scan-title').textContent = '掃描 GBIC 條碼（' + action + '）';
-    document.getElementById('form-title').textContent = action + ' GBIC';
+    document.getElementById('batch-title').textContent = action + ' GBIC';
+    updateScannedUI();
     showPage('pg-scan');
     startScan();
   }
 
+  function resetAndHome() {
+    scannedItems = [];
+    showPage('pg-main');
+  }
+
+  // ── Scanner ─────────────────────────────────────────────────────
   function startScan() {
     var video = document.getElementById('scanner-video');
+    scanCooldown = false;
 
-    // Try BarcodeDetector first (Chrome native, supports Code128/EAN/QR/etc.)
     if (typeof BarcodeDetector !== 'undefined') {
       var detector = new BarcodeDetector({ formats: [
         'code_128','code_39','code_93','ean_13','ean_8',
@@ -212,155 +260,218 @@
           video.srcObject = stream;
           video.play();
           scanTimer = setInterval(function () {
+            if (scanCooldown) return;
             detector.detect(video).then(function (codes) {
               if (codes.length > 0) onBarcodeFound(codes[0].rawValue);
             }).catch(function () {});
           }, 300);
         })
-        .catch(function () {
-          stopScan();
-          document.getElementById('f-barcode').value = '';
-          showPage('pg-form');
-        });
+        .catch(function () { stopScan(); showPage('pg-main'); });
       return;
     }
 
-    // Fallback: ZXing (supports Code128, EAN, QR, etc.)
     if (typeof ZXing !== 'undefined') {
       var hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-        ZXing.BarcodeFormat.CODE_128,
-        ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.EAN_13,
-        ZXing.BarcodeFormat.EAN_8,
-        ZXing.BarcodeFormat.UPC_A,
-        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,  ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A,   ZXing.BarcodeFormat.QR_CODE,
         ZXing.BarcodeFormat.DATA_MATRIX
       ]);
       var reader = new ZXing.BrowserMultiFormatReader(hints);
-      reader.decodeFromVideoDevice(null, 'scanner-video', function (result, err) {
-        if (result) {
-          reader.reset();
-          onBarcodeFound(result.getText());
-        }
+      reader.decodeFromVideoDevice(null, 'scanner-video', function (result) {
+        if (result && !scanCooldown) onBarcodeFound(result.getText());
       });
-      // Store reader for cleanup
-      scanStream = { zxingReader: reader, getTracks: function(){ return []; } };
+      scanStream = { zxingReader: reader, getTracks: function () { return []; } };
       return;
     }
 
-    // Last resort: jsQR (QR code only)
+    // jsQR fallback
     var canvas = document.getElementById('scanner-canvas');
     var ctx = canvas.getContext('2d');
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then(function (stream) {
-        scanStream = stream;
-        video.srcObject = stream;
-        video.play();
+        scanStream = stream; video.srcObject = stream; video.play();
         scanTimer = setInterval(function () {
-          if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
-          canvas.width  = video.videoWidth;
-          canvas.height = video.videoHeight;
+          if (scanCooldown || video.readyState !== video.HAVE_ENOUGH_DATA) return;
+          canvas.width = video.videoWidth; canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
-          var img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
           var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
           if (code && code.data) onBarcodeFound(code.data);
         }, 300);
       })
-      .catch(function () {
-        stopScan();
-        document.getElementById('f-barcode').value = '';
-        showPage('pg-form');
-      });
+      .catch(function () { stopScan(); showPage('pg-main'); });
   }
 
   function stopScan() {
-    if (scanTimer)  { clearInterval(scanTimer); scanTimer = null; }
+    if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
     if (scanStream) {
-      if (scanStream.zxingReader) {
-        scanStream.zxingReader.reset();
-      } else {
-        scanStream.getTracks().forEach(function (t) { t.stop(); });
-      }
+      if (scanStream.zxingReader) { scanStream.zxingReader.reset(); }
+      else { scanStream.getTracks().forEach(function (t) { t.stop(); }); }
       scanStream = null;
     }
   }
 
   function onBarcodeFound(barcode) {
-    stopScan();
-    document.getElementById('f-barcode').value = barcode;
-    document.getElementById('f-model').value   = '';
+    if (!barcode) return;
+    // Deduplicate
+    if (scannedItems.some(function (i) { return i.barcode === barcode; })) {
+      scanCooldown = true;
+      setTimeout(function () { scanCooldown = false; }, 1500);
+      return;
+    }
+    scanCooldown = true;
+    // Vibrate feedback
+    if (navigator.vibrate) navigator.vibrate(80);
+
+    var item = { barcode: barcode, model: '' };
+    scannedItems.push(item);
+    updateScannedUI();
+
+    // Fetch model in background
     callApi({ action: 'getModel', barcode: barcode }).then(function (data) {
-      document.getElementById('f-model').value = data.model || '';
-    }).catch(function () {});
-    showPage('pg-form');
+      item.model = data.model || '';
+      updateScannedUI();
+    }).catch(function () {}).finally(function () {
+      setTimeout(function () { scanCooldown = false; }, 800);
+    });
   }
 
-  function submitForm() {
-    var barcode    = document.getElementById('f-barcode').value.trim();
-    var model      = document.getElementById('f-model').value.trim();
-    var engineer   = document.getElementById('f-engineer').value.trim();
-    var rack       = document.getElementById('f-rack').value;
-    var uPosition  = document.getElementById('f-upos').value;
-    var errEl      = document.getElementById('form-err');
+  function removeScanned(index) {
+    scannedItems.splice(index, 1);
+    updateScannedUI();
+  }
 
-    if (!barcode || !engineer || !rack || !uPosition) {
-      errEl.textContent = '⚠ 請填寫所有欄位';
+  function updateScannedUI() {
+    var count = scannedItems.length;
+    var countEl = document.getElementById('scan-count');
+    var listEl  = document.getElementById('scanned-list');
+    var doneBtn = document.getElementById('btn-done');
+
+    countEl.textContent = count > 0 ? '已掃 ' + count + ' 個' : '';
+    doneBtn.style.display = count > 0 ? 'block' : 'none';
+
+    listEl.innerHTML = scannedItems.map(function (item, i) {
+      return '<div class="chip">' +
+        '<div class="chip-info">' +
+          '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
+          (item.model ? '<div class="chip-model">' + esc(item.model) + '</div>' : '') +
+        '</div>' +
+        '<button class="chip-del" onclick="removeScanned(' + i + ')">×</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  // ── Batch form ──────────────────────────────────────────────────
+  function goToBatchForm() {
+    stopScan();
+    // Build rack & U selects
+    var rackSel = document.getElementById('b-rack');
+    while (rackSel.options.length > 1) rackSel.remove(1);
+    rackOptions.forEach(function (v) {
+      var o = document.createElement('option'); o.value = v; o.textContent = v;
+      rackSel.appendChild(o);
+    });
+    var uSel = document.getElementById('b-upos-default');
+    while (uSel.options.length > 1) uSel.remove(1);
+    uOptions.forEach(function (v) {
+      var o = document.createElement('option'); o.value = v; o.textContent = v;
+      uSel.appendChild(o);
+    });
+
+    // Build per-item rows
+    var html = scannedItems.map(function (item, i) {
+      var uSelHtml = buildSelect('u-' + i, uOptions, '-- U 數 --');
+      return '<div class="batch-item">' +
+        '<div class="batch-item-header">' +
+          '<div>' +
+            '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
+            (item.model ? '<div class="batch-item-model">' + esc(item.model) + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+        uSelHtml +
+      '</div>';
+    }).join('');
+    document.getElementById('batch-items').innerHTML = html;
+    document.getElementById('batch-err').textContent = '';
+    showPage('pg-batch');
+  }
+
+  function applyDefaultU() {
+    var def = document.getElementById('b-upos-default').value;
+    if (!def) return;
+    scannedItems.forEach(function (_, i) {
+      var sel = document.getElementById('u-' + i);
+      if (sel && !sel.value) sel.value = def;
+    });
+  }
+
+  function submitBatch() {
+    var engineer = document.getElementById('b-engineer').value.trim();
+    var rack     = document.getElementById('b-rack').value;
+    var errEl    = document.getElementById('batch-err');
+
+    if (!engineer || !rack) {
+      errEl.textContent = '⚠ 請填寫工程師姓名和機櫃編號';
       return;
+    }
+
+    // Validate all U positions
+    for (var i = 0; i < scannedItems.length; i++) {
+      var sel = document.getElementById('u-' + i);
+      if (!sel || !sel.value) {
+        errEl.textContent = '⚠ 請設定第 ' + (i + 1) + ' 個 GBIC 的 U 數（條碼：' + scannedItems[i].barcode + '）';
+        return;
+      }
     }
     errEl.textContent = '';
 
-    callApi({
-      action: 'record',
-      type: currentAction,
-      engineer: engineer,
-      barcode: barcode,
-      model: model,
-      rack: rack,
-      uPosition: uPosition
-    }).then(function (data) {
-      if (data.success) {
-        document.getElementById('ok-title').textContent = currentAction + '成功';
-        document.getElementById('ok-detail').innerHTML =
-          '<p><span class="lbl">條碼：</span>' + esc(barcode) + '</p>' +
-          '<p><span class="lbl">型號：</span>' + (model ? esc(model) : '—') + '</p>' +
-          '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
-          '<p><span class="lbl">U 數：</span>' + esc(uPosition) + '</p>' +
-          '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
-          '<p><span class="lbl">動作：</span><span class="' +
-            (currentAction === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(currentAction) + '</span></p>';
-        showPage('pg-ok');
-      } else {
-        errEl.textContent = '送出失敗：' + (data.error || '未知錯誤');
-      }
+    // Submit all sequentially
+    var promises = scannedItems.map(function (item, i) {
+      return callApi({
+        action:     'record',
+        type:       currentAction,
+        engineer:   engineer,
+        barcode:    item.barcode,
+        model:      item.model || '',
+        rack:       rack,
+        uPosition:  document.getElementById('u-' + i).value
+      });
+    });
+
+    Promise.all(promises).then(function (results) {
+      var failed = results.filter(function (r) { return !r.success; });
+      document.getElementById('ok-title').textContent =
+        currentAction + '成功（共 ' + scannedItems.length + ' 個）';
+      document.getElementById('ok-detail').innerHTML =
+        '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
+        '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
+        '<p><span class="lbl">動作：</span><span class="' +
+          (currentAction === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(currentAction) + '</span></p>' +
+        (failed.length ? '<p style="color:#d93025">⚠ ' + failed.length + ' 筆送出失敗，請手動補登</p>' : '');
+      showPage('pg-ok');
     }).catch(function () {
       errEl.textContent = '網路錯誤，請稍後再試';
     });
   }
 
+  // ── Admin ───────────────────────────────────────────────────────
   function adminQueryRack() {
     var rack = document.getElementById('a-rack').value;
     if (!rack) return;
     callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
       var el = document.getElementById('res-rack');
-      if (!data.length) {
-        el.innerHTML = '<p class="no-data">此機櫃目前無 GBIC 在外</p>';
-        return;
-      }
+      if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無 GBIC 在外</p>'; return; }
       el.innerHTML = '<table>' +
         '<tr><th>U 數</th><th>條碼</th><th>型號</th><th>工程師</th><th>時間</th></tr>' +
         data.map(function (r) {
-          return '<tr>' +
-            '<td>' + esc(r.uPosition) + '</td>' +
-            '<td>' + esc(r.barcode) + '</td>' +
-            '<td>' + (r.model ? esc(r.model) : '—') + '</td>' +
-            '<td>' + esc(r.engineer) + '</td>' +
-            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
-            '</tr>';
-        }).join('') +
-        '</table>';
+          return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
+            '<td>' + (r.model ? esc(r.model) : '—') + '</td><td>' + esc(r.engineer) + '</td>' +
+            '<td>' + esc(fmtDate(r.timestamp)) + '</td></tr>';
+        }).join('') + '</table>';
     }).catch(function () {
-      document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗，請稍後再試</p>';
+      document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>';
     });
   }
 
@@ -369,24 +480,17 @@
     if (!barcode) return;
     callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
       var el = document.getElementById('res-barcode');
-      if (!data.length) {
-        el.innerHTML = '<p class="no-data">查無此條碼紀錄</p>';
-        return;
-      }
+      if (!data.length) { el.innerHTML = '<p class="no-data">查無此條碼紀錄</p>'; return; }
       el.innerHTML = '<table>' +
         '<tr><th>時間</th><th>動作</th><th>機櫃</th><th>U 數</th><th>工程師</th></tr>' +
         data.map(function (r) {
-          return '<tr>' +
-            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
+          return '<tr><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td class="' + (r.type === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
-            '<td>' + esc(r.rack) + '</td>' +
-            '<td>' + esc(r.uPosition) + '</td>' +
-            '<td>' + esc(r.engineer) + '</td>' +
-            '</tr>';
-        }).join('') +
-        '</table>';
+            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td>' +
+            '<td>' + esc(r.engineer) + '</td></tr>';
+        }).join('') + '</table>';
     }).catch(function () {
-      document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗，請稍後再試</p>';
+      document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>';
     });
   }
 
@@ -396,26 +500,20 @@
       var rows = data.map(function (r) {
         return [r.barcode, r.model, r.rack, r.uPosition, r.type, r.engineer, fmtDate(r.timestamp)];
       });
-      var csv = [headers].concat(rows)
-        .map(function (row) {
-          return row.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
-        }).join('\r\n');
-      var BOM  = '﻿';
-      var blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+      var csv = [headers].concat(rows).map(function (row) {
+        return row.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+      }).join('\r\n');
+      var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
       var url  = URL.createObjectURL(blob);
       var a    = document.createElement('a');
-      var today = new Date().toLocaleDateString('zh-TW').replace(/\//g, '-');
-      a.href     = url;
-      a.download = 'GBIC_庫存_' + today + '.csv';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }).catch(function () {
-      alert('匯出失敗，請稍後再試');
-    });
+      a.href = url;
+      a.download = 'GBIC_庫存_' + new Date().toLocaleDateString('zh-TW').replace(/\//g, '-') + '.csv';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(url);
+    }).catch(function () { alert('匯出失敗，請稍後再試'); });
   }
 
+  // ── Helpers ─────────────────────────────────────────────────────
   function fmtDate(ts) {
     if (!ts) return '—';
     try { return new Date(ts).toLocaleString('zh-TW', { hour12: false }); }
