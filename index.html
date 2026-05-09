@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; color: #333; }
@@ -85,6 +86,17 @@
     .batch-item-barcode { font-weight: 600; font-size: 14px; }
     .batch-item-model { font-size: 12px; color: #888; margin-bottom: 6px; }
     .batch-item select { font-size: 14px; padding: 8px 10px; }
+    .ocr-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 999; padding: 16px; overflow-y: auto; }
+    .ocr-modal.open { display: flex; flex-direction: column; }
+    .ocr-box { background: white; border-radius: 14px; padding: 20px; width: 100%; max-width: 480px; margin: auto; }
+    .ocr-box h3 { font-size: 16px; margin-bottom: 14px; }
+    .ocr-item { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+    .ocr-item input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .ocr-item input.edited { border-color: #e37400; background: #fff8f0; }
+    .ocr-item .del-btn { background: none; border: none; color: #d93025; font-size: 20px; cursor: pointer; padding: 0 4px; }
+    .ocr-status { font-size: 13px; color: #888; margin: 8px 0; text-align: center; }
+    .ocr-progress { width: 100%; height: 4px; background: #eee; border-radius: 2px; overflow: hidden; margin: 8px 0; }
+    .ocr-progress-bar { height: 100%; background: #1a73e8; width: 0%; transition: width .3s; }
     .file-upload-area {
       border: 2px dashed #ddd; border-radius: 10px; padding: 20px;
       text-align: center; color: #888; cursor: pointer; margin: 8px 0;
@@ -107,6 +119,22 @@
   <div id="admin-btn-wrap"></div>
 </div>
 
+<!-- OCR Modal -->
+<div id="ocr-modal" class="ocr-modal">
+  <div class="ocr-box">
+    <h3>📷 照片辨識 S/N</h3>
+    <div class="ocr-progress"><div class="ocr-progress-bar" id="ocr-bar"></div></div>
+    <p class="ocr-status" id="ocr-status">辨識中…</p>
+    <div id="ocr-list"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" onclick="addOcrManual()" style="flex:1;padding:10px;font-size:14px">＋ 手動新增</button>
+    </div>
+    <button class="btn btn-green" id="ocr-confirm" onclick="confirmOcr()" style="margin-top:8px;display:none">✓ 加入掃描清單</button>
+    <button class="btn btn-grey" onclick="closeOcr()" style="margin-top:6px">取消</button>
+  </div>
+</div>
+<input type="file" id="ocr-file" accept="image/*" style="display:none" onchange="runOcr(this)">
+
 <!-- Page: Scan (batch) -->
 <div id="pg-scan" class="page">
   <h2 id="scan-title">掃描設備條碼</h2>
@@ -116,6 +144,7 @@
     <div class="scan-frame"></div>
   </div>
   <p class="hint">對準條碼，連續掃多個；MT開頭=S/N，其他=P/N</p>
+  <button class="btn btn-orange" onclick="document.getElementById('ocr-file').click()" style="margin-top:4px">📷 上傳照片辨識 S/N</button>
   <div class="scan-count" id="scan-count"></div>
   <div id="scanned-list"></div>
   <button class="btn btn-green" id="btn-done" onclick="goToBatchForm()" style="display:none">✓ 完成掃描，填寫資料</button>
@@ -656,6 +685,110 @@
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  // ── OCR ─────────────────────────────────────────────────────────
+  var ocrResults = [];
+
+  function runOcr(input) {
+    var file = input.files[0];
+    if (!file) return;
+    input.value = '';
+    ocrResults = [];
+    document.getElementById('ocr-list').innerHTML = '';
+    document.getElementById('ocr-confirm').style.display = 'none';
+    document.getElementById('ocr-status').textContent = '辨識中…';
+    document.getElementById('ocr-bar').style.width = '0%';
+    document.getElementById('ocr-modal').classList.add('open');
+
+    Tesseract.recognize(file, 'eng', {
+      logger: function (m) {
+        if (m.status === 'recognizing text') {
+          document.getElementById('ocr-bar').style.width = Math.round(m.progress * 100) + '%';
+        }
+      }
+    }).then(function (result) {
+      var text = result.data.text;
+      var found = extractSN(text);
+      document.getElementById('ocr-bar').style.width = '100%';
+      document.getElementById('ocr-status').textContent = found.length > 0
+        ? '辨識完成，找到 ' + found.length + ' 個 S/N，可手動修正後加入'
+        : '未找到 S/N，請手動輸入或調整照片';
+      ocrResults = found;
+      renderOcrList();
+      document.getElementById('ocr-confirm').style.display = 'block';
+    }).catch(function () {
+      document.getElementById('ocr-status').textContent = '辨識失敗，請重試';
+    });
+  }
+
+  function extractSN(text) {
+    var found = [];
+    var seen = {};
+
+    // 方法1: SN / S/N 標籤後面的值
+    var labelPattern = /(?:S[\s\/\-]?N)\s*[:\-]?\s*([A-Za-z0-9\-]{4,})/gi;
+    var m;
+    while ((m = labelPattern.exec(text)) !== null) {
+      var val = m[1].trim();
+      if (!seen[val]) { seen[val] = true; found.push(val); }
+    }
+
+    // 方法2: MT 開頭的字串
+    var mtPattern = /\bMT[A-Za-z0-9\-]{3,}/g;
+    while ((m = mtPattern.exec(text)) !== null) {
+      var val = m[0].trim();
+      if (!seen[val]) { seen[val] = true; found.push(val); }
+    }
+
+    return found;
+  }
+
+  function renderOcrList() {
+    document.getElementById('ocr-list').innerHTML = ocrResults.map(function (sn, i) {
+      return '<div class="ocr-item" id="ocr-item-' + i + '">' +
+        '<input type="text" value="' + esc(sn) + '" id="ocr-val-' + i + '" ' +
+          'oninput="this.classList.add(\'edited\')" placeholder="S/N">' +
+        '<button class="del-btn" onclick="removeOcrItem(' + i + ')">×</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function removeOcrItem(i) {
+    var el = document.getElementById('ocr-item-' + i);
+    if (el) el.remove();
+  }
+
+  function addOcrManual() {
+    var i = Date.now();
+    var div = document.createElement('div');
+    div.className = 'ocr-item';
+    div.id = 'ocr-item-' + i;
+    div.innerHTML = '<input type="text" id="ocr-val-' + i + '" placeholder="輸入 S/N">' +
+      '<button class="del-btn" onclick="this.parentElement.remove()">×</button>';
+    document.getElementById('ocr-list').appendChild(div);
+    div.querySelector('input').focus();
+    document.getElementById('ocr-confirm').style.display = 'block';
+  }
+
+  function confirmOcr() {
+    var inputs = document.getElementById('ocr-list').querySelectorAll('input');
+    var added = 0;
+    inputs.forEach(function (inp) {
+      var val = inp.value.trim();
+      if (!val) return;
+      if (!scannedItems.some(function (i) { return i.barcode === val; })) {
+        scannedItems.push({ barcode: val, model: '' });
+        added++;
+      }
+    });
+    closeOcr();
+    updateScannedUI();
+    if (added > 0) document.getElementById('btn-done').style.display = 'block';
+  }
+
+  function closeOcr() {
+    document.getElementById('ocr-modal').classList.remove('open');
   }
 
   function adminQueryIn() {
