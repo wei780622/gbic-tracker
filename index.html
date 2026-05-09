@@ -209,6 +209,10 @@
     <input type="number" id="io-qty" placeholder="請輸入數量" min="1">
   </div>
   <div class="form-group">
+    <label>使用之 Rack 編號</label>
+    <input type="text" id="io-rack" placeholder="例：G08、H03">
+  </div>
+  <div class="form-group">
     <label>CSI 出庫人員</label>
     <input type="text" id="io-csi" placeholder="請輸入姓名">
   </div>
@@ -550,6 +554,7 @@
     var device    = document.getElementById('io-device').value.trim();
     var model     = document.getElementById('io-model').value.trim();
     var qty       = document.getElementById('io-qty').value;
+    var rack      = document.getElementById('io-rack').value.trim();
     var csiStaff  = document.getElementById('io-csi').value.trim();
     var recipient = document.getElementById('io-recipient').value.trim();
     var errEl     = document.getElementById('io-err');
@@ -559,7 +564,7 @@
       errEl.textContent = '⚠ 請填寫所有欄位'; return;
     }
     callApi({ action: 'recordInventoryOut', date: date, deviceType: device, model: model,
-      quantity: qty, csiStaff: csiStaff, recipient: recipient })
+      quantity: qty, rack: rack, csiStaff: csiStaff, recipient: recipient })
       .then(function (data) {
         if (data.success) {
           document.getElementById('ok-title').textContent = '出庫紀錄已送出';
@@ -567,6 +572,7 @@
             '<p><span class="lbl">領用設備：</span>' + esc(device) + '</p>' +
             '<p><span class="lbl">型號：</span>' + esc(model) + '</p>' +
             '<p><span class="lbl">數量：</span>' + esc(qty) + '</p>' +
+            (rack ? '<p><span class="lbl">Rack 編號：</span>' + esc(rack) + '</p>' : '') +
             '<p><span class="lbl">CSI 出庫：</span>' + esc(csiStaff) + '</p>' +
             '<p><span class="lbl">領用人：</span>' + esc(recipient) + '</p>';
           showPage('pg-ok');
