@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GBIC 追蹤系統</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; color: #333; }
+    .page { display: none; padding: 20px; min-height: 100vh; flex-direction: column; }
+    .page.active { display: flex; }
+    h1 { font-size: 22px; margin-bottom: 24px; color: #1a73e8; }
+    h2 { font-size: 18px; margin-bottom: 16px; color: #333; }
+    .btn {
+      display: block; width: 100%; padding: 16px; margin: 8px 0;
+      background: #1a73e8; color: white; border: none; border-radius: 10px;
+      font-size: 17px; cursor: pointer; text-align: center; font-weight: 500;
+    }
+    .btn:active { opacity: 0.85; }
+    .btn-green  { background: #0f9d58; }
+    .btn-grey   { background: #757575; }
+    .form-group { margin: 14px 0; }
+    label { display: block; font-size: 13px; color: #666; margin-bottom: 5px; }
+    input[type=text], select {
+      width: 100%; padding: 13px; border: 1px solid #ddd; border-radius: 8px;
+      font-size: 16px; background: white; -webkit-appearance: none;
+    }
+    #scanner-wrap {
+      position: relative; width: 100%; background: #000;
+      border-radius: 10px; overflow: hidden; margin: 14px 0;
+      aspect-ratio: 1;
+    }
+    #scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #scanner-canvas { display: none; }
+    .scan-frame {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 60%; aspect-ratio: 1; border: 3px solid #1a73e8; border-radius: 8px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+    }
+    .hint { text-align: center; color: #888; font-size: 13px; margin: 6px 0 12px; }
+    .card { background: white; border-radius: 10px; padding: 16px; margin: 10px 0; }
+    .card p { margin: 5px 0; font-size: 14px; line-height: 1.5; }
+    .card .lbl { color: #888; }
+    .tag-out { color: #d93025; font-weight: 600; }
+    .tag-in  { color: #0f9d58; font-weight: 600; }
+    .err { color: #d93025; font-size: 13px; margin: 6px 0; min-height: 18px; }
+    .big-check { font-size: 72px; text-align: center; margin: 24px 0 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+    th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #eee; }
+    th { background: #f0f4ff; font-weight: 600; white-space: nowrap; }
+    hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
+    .no-data { color: #888; font-size: 14px; text-align: center; padding: 16px; }
+  </style>
+</head>
+<body>
+
+<!-- Page: Main -->
+<div id="pg-main" class="page active">
+  <h1>📡 GBIC 追蹤系統</h1>
+  <button class="btn"           onclick="startAction('領出')">📤 領出 GBIC</button>
+  <button class="btn btn-green" onclick="startAction('歸還')">📥 歸還 GBIC</button>
+  <div id="admin-btn-wrap"></div>
+</div>
+
+<!-- Page: Scan -->
+<div id="pg-scan" class="page">
+  <h2 id="scan-title">掃描 GBIC 條碼</h2>
+  <div id="scanner-wrap">
+    <video id="scanner-video" autoplay playsinline muted></video>
+    <canvas id="scanner-canvas"></canvas>
+    <div class="scan-frame"></div>
+  </div>
+  <p class="hint">將條碼對準藍框內</p>
+  <button class="btn btn-grey" onclick="stopScan(); showPage('pg-main')">取消</button>
+</div>
+
+<!-- Page: Form -->
+<div id="pg-form" class="page">
+  <h2 id="form-title">領出 GBIC</h2>
+  <div class="form-group">
+    <label>GBIC 條碼</label>
+    <input type="text" id="f-barcode" placeholder="掃碼後自動帶入">
+  </div>
+  <div class="form-group">
+    <label>GBIC 型號</label>
+    <input type="text" id="f-model" placeholder="自動帶入，可手動修改">
+  </div>
+  <div class="form-group">
+    <label>工程師姓名</label>
+    <input type="text" id="f-engineer" placeholder="請輸入姓名" autocomplete="name">
+  </div>
+  <div class="form-group">
+    <label>機櫃編號</label>
+    <select id="f-rack"><option value="">-- 請選擇 --</option></select>
+  </div>
+  <div class="form-group">
+    <label>U 數</label>
+    <select id="f-upos"><option value="">-- 請選擇 --</option></select>
+  </div>
+  <p id="form-err" class="err"></p>
+  <button class="btn" onclick="submitForm()">✓ 送出</button>
+  <button class="btn btn-grey" onclick="showPage('pg-main')">取消</button>
+</div>
+
+<!-- Page: Success -->
+<div id="pg-ok" class="page">
+  <div class="big-check">✅</div>
+  <h2 style="text-align:center" id="ok-title">送出成功</h2>
+  <div class="card" id="ok-detail"></div>
+  <button class="btn" style="margin-top:20px" onclick="showPage('pg-main')">再掃一筆</button>
+</div>
+
+<!-- Page: Admin -->
+<div id="pg-admin" class="page">
+  <h2>查詢 / 匯出</h2>
+
+  <div class="form-group">
+    <label>依機櫃查詢目前在外 GBIC</label>
+    <select id="a-rack"><option value="">-- 選擇機櫃 --</option></select>
+  </div>
+  <button class="btn" onclick="adminQueryRack()">查詢</button>
+  <div id="res-rack" style="overflow-x:auto;margin-top:8px"></div>
+
+  <hr>
+
+  <div class="form-group">
+    <label>依 GBIC 條碼查詢歷史</label>
+    <input type="text" id="a-barcode" placeholder="輸入條碼">
+  </div>
+  <button class="btn" onclick="adminQueryBarcode()">查詢</button>
+  <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
+
+  <hr>
+
+  <button class="btn btn-grey" onclick="exportCSV()">⬇ 匯出庫存快照（CSV）</button>
+  <p class="hint" style="margin-top:4px">下載 .csv 檔，可用 Excel 開啟</p>
+
+  <hr>
+  <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回主頁</button>
+</div>
+
+<script>
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyz98FSSFpjjyAFtVgZr3eizddRYAU22Z5aM2NJgPYypXfniTI4ePoLLXTiWO2vEGRO/exec';
+  const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
+
+  let currentAction = '';
+  let scanStream = null;
+  let scanTimer = null;
+
+  function esc(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  window.onload = function () {
+    if (isAdmin) {
+      document.getElementById('admin-btn-wrap').innerHTML =
+        '<hr><button class="btn btn-grey" onclick="showPage(\'pg-admin\')">🔍 查詢 / 匯出</button>';
+    }
+    callApi({ action: 'getOptions' }).then(function (data) {
+      fillSelect('f-rack', data.racks);
+      fillSelect('f-upos', data.uNumbers);
+      fillSelect('a-rack', data.racks);
+    }).catch(function () {
+      alert('無法載入選單，請重新整理頁面');
+    });
+  };
+
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(function (p) {
+      p.classList.remove('active');
+    });
+    document.getElementById(id).classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  function fillSelect(id, values) {
+    var sel = document.getElementById(id);
+    values.forEach(function (v) {
+      var opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      sel.appendChild(opt);
+    });
+  }
+
+  function startAction(action) {
+    currentAction = action;
+    document.getElementById('scan-title').textContent = '掃描 GBIC 條碼（' + action + '）';
+    document.getElementById('form-title').textContent = action + ' GBIC';
+    showPage('pg-scan');
+    startScan();
+  }
+
+  function startScan() {
+    var video  = document.getElementById('scanner-video');
+    var canvas = document.getElementById('scanner-canvas');
+    var ctx    = canvas.getContext('2d');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function (stream) {
+        scanStream = stream;
+        video.srcObject = stream;
+        video.play();
+        scanTimer = setInterval(function () {
+          if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+          canvas.width  = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          var img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+          if (code && code.data) {
+            onBarcodeFound(code.data);
+          }
+        }, 300);
+      })
+      .catch(function () {
+        stopScan();
+        document.getElementById('f-barcode').value = '';
+        showPage('pg-form');
+      });
+  }
+
+  function stopScan() {
+    if (scanTimer)  { clearInterval(scanTimer); scanTimer = null; }
+    if (scanStream) { scanStream.getTracks().forEach(function (t) { t.stop(); }); scanStream = null; }
+  }
+
+  function onBarcodeFound(barcode) {
+    stopScan();
+    document.getElementById('f-barcode').value = barcode;
+    document.getElementById('f-model').value   = '';
+    callApi({ action: 'getModel', barcode: barcode }).then(function (data) {
+      document.getElementById('f-model').value = data.model || '';
+    }).catch(function () {});
+    showPage('pg-form');
+  }
+
+  function submitForm() {
+    var barcode    = document.getElementById('f-barcode').value.trim();
+    var model      = document.getElementById('f-model').value.trim();
+    var engineer   = document.getElementById('f-engineer').value.trim();
+    var rack       = document.getElementById('f-rack').value;
+    var uPosition  = document.getElementById('f-upos').value;
+    var errEl      = document.getElementById('form-err');
+
+    if (!barcode || !engineer || !rack || !uPosition) {
+      errEl.textContent = '⚠ 請填寫所有欄位';
+      return;
+    }
+    errEl.textContent = '';
+
+    callApi({
+      action: 'record',
+      type: currentAction,
+      engineer: engineer,
+      barcode: barcode,
+      model: model,
+      rack: rack,
+      uPosition: uPosition
+    }).then(function (data) {
+      if (data.success) {
+        document.getElementById('ok-title').textContent = currentAction + '成功';
+        document.getElementById('ok-detail').innerHTML =
+          '<p><span class="lbl">條碼：</span>' + esc(barcode) + '</p>' +
+          '<p><span class="lbl">型號：</span>' + (model ? esc(model) : '—') + '</p>' +
+          '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
+          '<p><span class="lbl">U 數：</span>' + esc(uPosition) + '</p>' +
+          '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
+          '<p><span class="lbl">動作：</span><span class="' +
+            (currentAction === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(currentAction) + '</span></p>';
+        showPage('pg-ok');
+      } else {
+        errEl.textContent = '送出失敗：' + (data.error || '未知錯誤');
+      }
+    }).catch(function () {
+      errEl.textContent = '網路錯誤，請稍後再試';
+    });
+  }
+
+  function adminQueryRack() {
+    var rack = document.getElementById('a-rack').value;
+    if (!rack) return;
+    callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
+      var el = document.getElementById('res-rack');
+      if (!data.length) {
+        el.innerHTML = '<p class="no-data">此機櫃目前無 GBIC 在外</p>';
+        return;
+      }
+      el.innerHTML = '<table>' +
+        '<tr><th>U 數</th><th>條碼</th><th>型號</th><th>工程師</th><th>時間</th></tr>' +
+        data.map(function (r) {
+          return '<tr>' +
+            '<td>' + esc(r.uPosition) + '</td>' +
+            '<td>' + esc(r.barcode) + '</td>' +
+            '<td>' + (r.model ? esc(r.model) : '—') + '</td>' +
+            '<td>' + esc(r.engineer) + '</td>' +
+            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</table>';
+    }).catch(function () {
+      document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗，請稍後再試</p>';
+    });
+  }
+
+  function adminQueryBarcode() {
+    var barcode = document.getElementById('a-barcode').value.trim();
+    if (!barcode) return;
+    callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
+      var el = document.getElementById('res-barcode');
+      if (!data.length) {
+        el.innerHTML = '<p class="no-data">查無此條碼紀錄</p>';
+        return;
+      }
+      el.innerHTML = '<table>' +
+        '<tr><th>時間</th><th>動作</th><th>機櫃</th><th>U 數</th><th>工程師</th></tr>' +
+        data.map(function (r) {
+          return '<tr>' +
+            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
+            '<td class="' + (r.type === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
+            '<td>' + esc(r.rack) + '</td>' +
+            '<td>' + esc(r.uPosition) + '</td>' +
+            '<td>' + esc(r.engineer) + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</table>';
+    }).catch(function () {
+      document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗，請稍後再試</p>';
+    });
+  }
+
+  function exportCSV() {
+    callApi({ action: 'export' }).then(function (data) {
+      var headers = ['條碼', '型號', '機櫃', 'U數', '狀態', '工程師', '最後操作時間'];
+      var rows = data.map(function (r) {
+        return [r.barcode, r.model, r.rack, r.uPosition, r.type, r.engineer, fmtDate(r.timestamp)];
+      });
+      var csv = [headers].concat(rows)
+        .map(function (row) {
+          return row.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+        }).join('\r\n');
+      var BOM  = '﻿';
+      var blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      var today = new Date().toLocaleDateString('zh-TW').replace(/\//g, '-');
+      a.href     = url;
+      a.download = 'GBIC_庫存_' + today + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }).catch(function () {
+      alert('匯出失敗，請稍後再試');
+    });
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '—';
+    try { return new Date(ts).toLocaleString('zh-TW', { hour12: false }); }
+    catch (e) { return String(ts); }
+  }
+
+  function callApi(payload) {
+    return fetch(SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    }).then(function (r) { return r.json(); });
+  }
+</script>
+</body>
+</html>
