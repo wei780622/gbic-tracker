@@ -720,28 +720,53 @@
     });
   }
 
-  // 從 Canvas 偵測條碼，回傳字串陣列
-  async function detectBarcodes(canvas) {
-    var results = [];
+  // 從 Canvas 偵測條碼，支援分格掃描以處理多條碼密集圖片
+  async function detectBarcodes(canvas, onProgress) {
+    var found = new Set();
 
-    // 優先用 BarcodeDetector（Chrome/Edge 原生，最快最準）
-    if (typeof BarcodeDetector !== 'undefined') {
+    async function scanTile(c) {
+      // BarcodeDetector：一次可偵測多個條碼
+      if (typeof BarcodeDetector !== 'undefined') {
+        try {
+          var hits = await new BarcodeDetector().detect(c);
+          hits.forEach(function(h) { if (h.rawValue) found.add(h.rawValue); });
+        } catch(e) {}
+      }
+      // ZXing：每格偵測一個（補充 BarcodeDetector 漏掉的）
       try {
-        var det = new BarcodeDetector();
-        var hits = await det.detect(canvas);
-        hits.forEach(function(h) { if (h.rawValue) results.push(h.rawValue); });
-        if (results.length) return results;
+        var r = await new ZXing.BrowserMultiFormatReader().decodeFromCanvas(c);
+        if (r && r.getText()) found.add(r.getText());
       } catch(e) {}
     }
 
-    // Fallback: ZXing（支援 Code128 / QR / DataMatrix）
-    try {
-      var reader = new ZXing.BrowserMultiFormatReader();
-      var r = await reader.decodeFromCanvas(canvas);
-      if (r && r.getText()) results.push(r.getText());
-    } catch(e) {}
+    function makeTile(x, y, w, h) {
+      var t = document.createElement('canvas');
+      t.width = w; t.height = h;
+      t.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+      return t;
+    }
 
-    return results;
+    var W = canvas.width, H = canvas.height;
+    var COLS = 2, ROWS = 4;
+    var tiles = [canvas]; // 先掃整張
+
+    // 切 2×4 格
+    for (var row = 0; row < ROWS; row++) {
+      for (var col = 0; col < COLS; col++) {
+        var x = Math.floor(col * W / COLS);
+        var y = Math.floor(row * H / ROWS);
+        var tw = Math.floor((col+1) * W / COLS) - x;
+        var th = Math.floor((row+1) * H / ROWS) - y;
+        tiles.push(makeTile(x, y, tw, th));
+      }
+    }
+
+    for (var i = 0; i < tiles.length; i++) {
+      if (onProgress) onProgress(i, tiles.length);
+      await scanTile(tiles[i]);
+    }
+
+    return Array.from(found);
   }
 
   // 圖片前處理（Otsu 二值化）供 Tesseract fallback 使用
@@ -808,7 +833,11 @@
       try {
         // ── 第一步：條碼偵測（最準）──────────────────────
         var canvas = await fileToCanvas(files[fi]);
-        var barcodes = await detectBarcodes(canvas);
+        updateStatus('第 ' + (fi+1) + ' 張：分格掃描條碼中…');
+        var barcodes = await detectBarcodes(canvas, function(i, total) {
+          document.getElementById('ocr-bar').style.width =
+            Math.round((fi + i / total) / files.length * 100) + '%';
+        });
         var gotSN = false;
 
         if (barcodes.length) {
