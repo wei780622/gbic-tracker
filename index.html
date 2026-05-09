@@ -243,6 +243,11 @@
   <button class="btn" onclick="adminQueryBarcode()">查詢</button>
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
   <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">領貨出庫紀錄</label>
+  <button class="btn btn-purple" onclick="adminQueryOut()">查詢所有出庫紀錄</button>
+  <div id="res-out" style="overflow-x:auto;margin-top:8px"></div>
+
+  <hr>
   <button class="btn btn-grey" onclick="exportCSV()">⬇ 匯出庫存快照（CSV）</button>
   <hr>
   <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回主頁</button>
@@ -607,6 +612,28 @@
             '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td><td>' + esc(r.engineer) + '</td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  function adminQueryOut() {
+    callApi({ action: 'queryInventoryOut' }).then(function (data) {
+      var el = document.getElementById('res-out');
+      if (!data.length) { el.innerHTML = '<p class="no-data">尚無出庫紀錄</p>'; return; }
+      el.innerHTML = '<table>' +
+        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th></tr>' +
+        data.map(function (r) {
+          return '<tr>' +
+            '<td>' + esc(fmtDate(r.date)) + '</td>' +
+            '<td>' + esc(r.device) + '</td>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td>' + esc(r.quantity) + '</td>' +
+            '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
+            '<td>' + esc(r.csiStaff) + '</td>' +
+            '<td>' + esc(r.recipient) + '</td>' +
+            '</tr>';
+        }).join('') + '</table>';
+    }).catch(function () {
+      document.getElementById('res-out').innerHTML = '<p class="no-data">查詢失敗</p>';
+    });
   }
 
   function exportCSV() {
