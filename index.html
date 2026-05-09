@@ -133,7 +133,7 @@
     <button class="btn btn-grey" onclick="closeOcr()" style="margin-top:6px">取消</button>
   </div>
 </div>
-<input type="file" id="ocr-file" accept="image/*" style="display:none" onchange="runOcr(this)">
+<input type="file" id="ocr-file" accept="image/*" multiple style="display:none" onchange="runOcr(this)">
 
 <!-- Page: Scan (batch) -->
 <div id="pg-scan" class="page">
@@ -704,34 +704,50 @@
   }
 
   function runOcr(input) {
-    var file = input.files[0];
-    if (!file) return;
+    var files = Array.from(input.files);
+    if (!files.length) return;
     input.value = '';
     ocrResults = [];
     document.getElementById('ocr-list').innerHTML = '';
     document.getElementById('ocr-confirm').style.display = 'none';
-    document.getElementById('ocr-status').textContent = '辨識中…';
-    document.getElementById('ocr-bar').style.width = '0%';
     document.getElementById('ocr-modal').classList.add('open');
 
-    Tesseract.recognize(file, 'eng', {
-      logger: function (m) {
-        if (m.status === 'recognizing text') {
-          document.getElementById('ocr-bar').style.width = Math.round(m.progress * 100) + '%';
-        }
-      }
-    }).then(function (result) {
-      var text = result.data.text;
-      var found = extractSN(text);
-      document.getElementById('ocr-bar').style.width = '100%';
-      document.getElementById('ocr-status').textContent = found.length > 0
-        ? '辨識完成，找到 ' + found.length + ' 個 S/N，可手動修正後加入'
-        : '未找到 S/N，請手動輸入或調整照片';
-      ocrResults = found;
-      renderOcrList();
-      document.getElementById('ocr-confirm').style.display = 'block';
-    }).catch(function () {
-      document.getElementById('ocr-status').textContent = '辨識失敗，請重試';
+    var total = files.length;
+    var done = 0;
+    var seen = {};
+
+    function updateStatus() {
+      document.getElementById('ocr-status').textContent =
+        done < total ? ('辨識中… ' + done + ' / ' + total + ' 張') : ('全部完成，共找到 ' + ocrResults.length + ' 個 S/N');
+      document.getElementById('ocr-bar').style.width = Math.round((done / total) * 100) + '%';
+    }
+
+    updateStatus();
+
+    var chain = Promise.resolve();
+    files.forEach(function (file) {
+      chain = chain.then(function () {
+        return Tesseract.recognize(file, 'eng', {
+          logger: function (m) {
+            if (m.status === 'recognizing text') {
+              var pct = (done + m.progress) / total * 100;
+              document.getElementById('ocr-bar').style.width = Math.round(pct) + '%';
+            }
+          }
+        }).then(function (result) {
+          extractSN(result.data.text).forEach(function (sn) {
+            if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
+          });
+          done++;
+          updateStatus();
+          renderOcrList();
+          document.getElementById('ocr-confirm').style.display = 'block';
+        });
+      });
+    });
+
+    chain.catch(function () {
+      document.getElementById('ocr-status').textContent = '部分照片辨識失敗，已顯示其餘結果';
     });
   }
 
