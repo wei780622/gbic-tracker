@@ -3,34 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GBIC 追蹤系統</title>
+  <title>GMI 機房上架系統</title>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; color: #333; }
     .page { display: none; padding: 20px; min-height: 100vh; flex-direction: column; }
     .page.active { display: flex; }
-    h1 { font-size: 22px; margin-bottom: 24px; color: #1a73e8; }
+    h1 { font-size: 20px; margin-bottom: 20px; color: #1a73e8; }
     h2 { font-size: 18px; margin-bottom: 16px; color: #333; }
     .btn {
-      display: block; width: 100%; padding: 16px; margin: 8px 0;
+      display: block; width: 100%; padding: 15px; margin: 7px 0;
       background: #1a73e8; color: white; border: none; border-radius: 10px;
-      font-size: 17px; cursor: pointer; text-align: center; font-weight: 500;
+      font-size: 16px; cursor: pointer; text-align: center; font-weight: 500;
     }
     .btn:active { opacity: 0.85; }
-    .btn-green { background: #0f9d58; }
-    .btn-grey  { background: #757575; }
-    .form-group { margin: 14px 0; }
+    .btn-green  { background: #0f9d58; }
+    .btn-grey   { background: #757575; }
+    .btn-orange { background: #e37400; }
+    .btn-purple { background: #7b2ff7; }
+    .form-group { margin: 12px 0; }
     label { display: block; font-size: 13px; color: #666; margin-bottom: 5px; }
-    input[type=text], select {
-      width: 100%; padding: 13px; border: 1px solid #ddd; border-radius: 8px;
-      font-size: 16px; background: white; -webkit-appearance: none;
+    input[type=text], input[type=number], input[type=date], select, textarea {
+      width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;
+      font-size: 15px; background: white; -webkit-appearance: none;
     }
+    textarea { resize: vertical; min-height: 60px; }
     #scanner-wrap {
       position: relative; width: 100%; background: #000;
-      border-radius: 10px; overflow: hidden; margin: 10px 0;
-      aspect-ratio: 1;
+      border-radius: 10px; overflow: hidden; margin: 10px 0; aspect-ratio: 1;
     }
     #scanner-video { width: 100%; height: 100%; object-fit: cover; display: block; }
     #scanner-canvas { display: none; }
@@ -46,15 +49,13 @@
     .tag-out { color: #d93025; font-weight: 600; }
     .tag-in  { color: #0f9d58; font-weight: 600; }
     .err { color: #d93025; font-size: 13px; margin: 6px 0; min-height: 18px; }
+    .ok-msg { color: #0f9d58; font-size: 13px; margin: 6px 0; }
     .big-check { font-size: 72px; text-align: center; margin: 24px 0 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
     th, td { padding: 8px 6px; text-align: left; border-bottom: 1px solid #eee; }
     th { background: #f0f4ff; font-weight: 600; white-space: nowrap; }
-    hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
+    hr { border: none; border-top: 1px solid #e0e0e0; margin: 16px 0; }
     .no-data { color: #888; font-size: 14px; text-align: center; padding: 16px; }
-
-    /* Scanned list chips */
-    #scanned-list { margin: 8px 0; }
     .chip {
       display: flex; align-items: center; justify-content: space-between;
       background: white; border-radius: 8px; padding: 10px 12px;
@@ -63,43 +64,43 @@
     .chip-info { flex: 1; }
     .chip-barcode { font-weight: 600; color: #333; }
     .chip-model { font-size: 12px; color: #888; margin-top: 2px; }
-    .chip-del { background: none; border: none; color: #d93025; font-size: 20px;
-                cursor: pointer; padding: 0 4px; line-height: 1; }
+    .chip-del { background: none; border: none; color: #d93025; font-size: 20px; cursor: pointer; padding: 0 4px; }
     .scan-count { font-size: 13px; color: #1a73e8; font-weight: 600; text-align: center; margin: 4px 0; }
-
-    /* Batch form item rows */
-    .batch-item {
-      background: white; border-radius: 8px; padding: 12px;
-      margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08);
-    }
-    .batch-item-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 8px;
-    }
+    .batch-item { background: white; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
     .batch-item-barcode { font-weight: 600; font-size: 14px; }
-    .batch-item-model { font-size: 12px; color: #888; }
+    .batch-item-model { font-size: 12px; color: #888; margin-bottom: 6px; }
     .batch-item select { font-size: 14px; padding: 8px 10px; }
+    .file-upload-area {
+      border: 2px dashed #ddd; border-radius: 10px; padding: 20px;
+      text-align: center; color: #888; cursor: pointer; margin: 8px 0;
+    }
+    .file-upload-area:hover { border-color: #1a73e8; color: #1a73e8; }
+    .preview-table-wrap { overflow-x: auto; max-height: 200px; overflow-y: auto; margin-top: 8px; }
+    .col-map { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    .col-map .form-group { flex: 1; min-width: 120px; margin: 4px 0; }
   </style>
 </head>
 <body>
 
 <!-- Page: Main -->
 <div id="pg-main" class="page active">
-  <h1>📡 GBIC 追蹤系統</h1>
-  <button class="btn"           onclick="startAction('領出')">📤 領出 GBIC</button>
-  <button class="btn btn-green" onclick="startAction('歸還')">📥 歸還 GBIC</button>
+  <h1>🏢 GMI 機房上架系統</h1>
+  <button class="btn"           onclick="startAction('上架')">📤 上架設備</button>
+  <button class="btn btn-green" onclick="startAction('歸還')">📥 歸還設備</button>
+  <button class="btn btn-orange" onclick="showPage('pg-inv-in')">📦 庫存上傳</button>
+  <button class="btn btn-purple" onclick="showPage('pg-inv-out')">🚚 領貨出庫</button>
   <div id="admin-btn-wrap"></div>
 </div>
 
 <!-- Page: Scan (batch) -->
 <div id="pg-scan" class="page">
-  <h2 id="scan-title">掃描 GBIC 條碼</h2>
+  <h2 id="scan-title">掃描設備條碼</h2>
   <div id="scanner-wrap">
     <video id="scanner-video" autoplay playsinline muted></video>
     <canvas id="scanner-canvas"></canvas>
     <div class="scan-frame"></div>
   </div>
-  <p class="hint">將條碼對準框內，可連續掃多個</p>
+  <p class="hint">對準條碼，連續掃多個；MT開頭=S/N，其他=P/N</p>
   <div class="scan-count" id="scan-count"></div>
   <div id="scanned-list"></div>
   <button class="btn btn-green" id="btn-done" onclick="goToBatchForm()" style="display:none">✓ 完成掃描，填寫資料</button>
@@ -108,8 +109,7 @@
 
 <!-- Page: Batch Form -->
 <div id="pg-batch" class="page">
-  <h2 id="batch-title">領出 GBIC</h2>
-
+  <h2 id="batch-title">上架設備</h2>
   <div class="form-group">
     <label>工程師姓名</label>
     <input type="text" id="b-engineer" placeholder="請輸入姓名" autocomplete="name">
@@ -119,16 +119,13 @@
     <select id="b-rack"><option value="">-- 請選擇 --</option></select>
   </div>
   <div class="form-group">
-    <label>預設 U 數（套用到所有未設定的項目）</label>
+    <label>預設 U 數（套用到所有未設定項目）</label>
     <select id="b-upos-default" onchange="applyDefaultU()">
       <option value="">-- 選擇預設 --</option>
     </select>
   </div>
-
   <hr>
-
   <div id="batch-items"></div>
-
   <p id="batch-err" class="err"></p>
   <button class="btn" onclick="submitBatch()">✓ 全部送出</button>
   <button class="btn btn-grey" onclick="showPage('pg-scan'); startScan()">← 繼續掃描</button>
@@ -139,34 +136,110 @@
   <div class="big-check">✅</div>
   <h2 style="text-align:center" id="ok-title">送出成功</h2>
   <div class="card" id="ok-detail"></div>
-  <button class="btn" style="margin-top:20px" onclick="resetAndHome()">再掃一批</button>
+  <button class="btn" style="margin-top:20px" onclick="resetAndHome()">返回主頁</button>
+</div>
+
+<!-- Page: 庫存上傳 -->
+<div id="pg-inv-in" class="page">
+  <h2>📦 庫存上傳</h2>
+
+  <div class="form-group">
+    <label>日期</label>
+    <input type="date" id="ii-date">
+  </div>
+  <div class="form-group">
+    <label>庫存型號</label>
+    <input type="text" id="ii-model" placeholder="請輸入型號">
+  </div>
+  <div class="form-group">
+    <label>庫存數量</label>
+    <input type="number" id="ii-qty" placeholder="請輸入數量" min="1">
+  </div>
+  <div class="form-group">
+    <label>簽收人</label>
+    <input type="text" id="ii-signee" placeholder="請輸入姓名">
+  </div>
+
+  <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:6px;display:block">上傳含 S/N、P/N 的 CSV 或 Excel（選填）</label>
+  <div class="file-upload-area" onclick="document.getElementById('ii-file').click()">
+    <div id="ii-file-label">📄 點此選擇檔案（.csv / .xlsx / .xls）</div>
+  </div>
+  <input type="file" id="ii-file" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(this)">
+
+  <div id="ii-col-map" style="display:none">
+    <div class="col-map">
+      <div class="form-group">
+        <label>S/N 欄位</label>
+        <select id="ii-sn-col"></select>
+      </div>
+      <div class="form-group">
+        <label>P/N 欄位</label>
+        <select id="ii-pn-col"></select>
+      </div>
+    </div>
+    <p class="hint" id="ii-row-count"></p>
+    <div class="preview-table-wrap" id="ii-preview"></div>
+  </div>
+
+  <p id="ii-err" class="err"></p>
+  <p id="ii-ok" class="ok-msg"></p>
+  <button class="btn btn-orange" onclick="submitInventoryIn()">✓ 送出入庫紀錄</button>
+  <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回</button>
+</div>
+
+<!-- Page: 領貨出庫 -->
+<div id="pg-inv-out" class="page">
+  <h2>🚚 領貨出庫</h2>
+
+  <div class="form-group">
+    <label>日期</label>
+    <input type="date" id="io-date">
+  </div>
+  <div class="form-group">
+    <label>領用設備</label>
+    <input type="text" id="io-device" placeholder="例：Server、GBIC、Switch…">
+  </div>
+  <div class="form-group">
+    <label>領用型號</label>
+    <input type="text" id="io-model" placeholder="請輸入型號">
+  </div>
+  <div class="form-group">
+    <label>領用數量</label>
+    <input type="number" id="io-qty" placeholder="請輸入數量" min="1">
+  </div>
+  <div class="form-group">
+    <label>CSI 出庫人員</label>
+    <input type="text" id="io-csi" placeholder="請輸入姓名">
+  </div>
+  <div class="form-group">
+    <label>領用人員</label>
+    <input type="text" id="io-recipient" placeholder="請輸入姓名">
+  </div>
+
+  <p id="io-err" class="err"></p>
+  <button class="btn btn-purple" onclick="submitInventoryOut()">✓ 送出出庫紀錄</button>
+  <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回</button>
 </div>
 
 <!-- Page: Admin -->
 <div id="pg-admin" class="page">
   <h2>查詢 / 匯出</h2>
-
   <div class="form-group">
-    <label>依機櫃查詢目前在外 GBIC</label>
+    <label>依機櫃查詢目前上架設備</label>
     <select id="a-rack"><option value="">-- 選擇機櫃 --</option></select>
   </div>
   <button class="btn" onclick="adminQueryRack()">查詢</button>
   <div id="res-rack" style="overflow-x:auto;margin-top:8px"></div>
-
   <hr>
-
   <div class="form-group">
-    <label>依 GBIC 條碼查詢歷史</label>
-    <input type="text" id="a-barcode" placeholder="輸入條碼">
+    <label>依 S/N 查詢歷史</label>
+    <input type="text" id="a-barcode" placeholder="輸入 S/N">
   </div>
   <button class="btn" onclick="adminQueryBarcode()">查詢</button>
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
-
   <hr>
-
   <button class="btn btn-grey" onclick="exportCSV()">⬇ 匯出庫存快照（CSV）</button>
-  <p class="hint" style="margin-top:4px">下載 .csv 檔，可用 Excel 開啟</p>
-
   <hr>
   <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回主頁</button>
 </div>
@@ -178,17 +251,19 @@
   let currentAction = '';
   let scanStream = null;
   let scanTimer = null;
-  let scannedItems = [];  // [{barcode, model}]
+  let scannedItems = [];
   let rackOptions = [];
   let uOptions = [];
   let scanCooldown = false;
+  let fileRows = [];
+  let fileHeaders = [];
 
-  function esc(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
   }
 
   window.onload = function () {
@@ -196,13 +271,14 @@
       document.getElementById('admin-btn-wrap').innerHTML =
         '<hr><button class="btn btn-grey" onclick="showPage(\'pg-admin\')">🔍 查詢 / 匯出</button>';
     }
+    document.getElementById('ii-date').value = today();
+    document.getElementById('io-date').value = today();
+
     callApi({ action: 'getOptions' }).then(function (data) {
       rackOptions = data.racks;
       uOptions = data.uNumbers;
       fillSelect('a-rack', rackOptions);
-    }).catch(function () {
-      alert('無法載入選單，請重新整理頁面');
-    });
+    }).catch(function () { alert('無法載入選單，請重新整理'); });
   };
 
   function showPage(id) {
@@ -213,60 +289,49 @@
 
   function fillSelect(id, values) {
     var sel = document.getElementById(id);
-    var existing = sel.options.length;
-    if (existing > 1) return;
+    if (sel.options.length > 1) return;
     values.forEach(function (v) {
-      var opt = document.createElement('option');
-      opt.value = v; opt.textContent = v;
-      sel.appendChild(opt);
+      var o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
     });
   }
 
   function buildSelect(id, values, placeholder) {
-    var html = '<select id="' + id + '"><option value="">' + placeholder + '</option>';
-    values.forEach(function (v) { html += '<option value="' + esc(v) + '">' + esc(v) + '</option>'; });
-    return html + '</select>';
+    var h = '<select id="' + id + '"><option value="">' + placeholder + '</option>';
+    values.forEach(function (v) { h += '<option value="' + esc(v) + '">' + esc(v) + '</option>'; });
+    return h + '</select>';
   }
 
-  // ── Action start ────────────────────────────────────────────────
+  // ── Action / Scan ────────────────────────────────────────────────
   function startAction(action) {
     currentAction = action;
     scannedItems = [];
-    document.getElementById('scan-title').textContent = '掃描 GBIC 條碼（' + action + '）';
-    document.getElementById('batch-title').textContent = action + ' GBIC';
+    document.getElementById('scan-title').textContent = '掃描設備條碼（' + action + '）';
+    document.getElementById('batch-title').textContent = action + '設備';
     updateScannedUI();
     showPage('pg-scan');
     startScan();
   }
 
-  function resetAndHome() {
-    scannedItems = [];
-    showPage('pg-main');
-  }
+  function resetAndHome() { scannedItems = []; showPage('pg-main'); }
 
-  // ── Scanner ─────────────────────────────────────────────────────
   function startScan() {
     var video = document.getElementById('scanner-video');
     scanCooldown = false;
 
     if (typeof BarcodeDetector !== 'undefined') {
       var detector = new BarcodeDetector({ formats: [
-        'code_128','code_39','code_93','ean_13','ean_8',
-        'upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
+        'code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
       ]});
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then(function (stream) {
-          scanStream = stream;
-          video.srcObject = stream;
-          video.play();
+          scanStream = stream; video.srcObject = stream; video.play();
           scanTimer = setInterval(function () {
             if (scanCooldown) return;
             detector.detect(video).then(function (codes) {
               if (codes.length > 0) onBarcodeFound(codes[0].rawValue);
             }).catch(function () {});
           }, 300);
-        })
-        .catch(function () { stopScan(); showPage('pg-main'); });
+        }).catch(function () { stopScan(); showPage('pg-main'); });
       return;
     }
 
@@ -274,9 +339,8 @@
       var hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
         ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
-        ZXing.BarcodeFormat.EAN_13,  ZXing.BarcodeFormat.EAN_8,
-        ZXing.BarcodeFormat.UPC_A,   ZXing.BarcodeFormat.QR_CODE,
-        ZXing.BarcodeFormat.DATA_MATRIX
+        ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.QR_CODE, ZXing.BarcodeFormat.DATA_MATRIX
       ]);
       var reader = new ZXing.BrowserMultiFormatReader(hints);
       reader.decodeFromVideoDevice(null, 'scanner-video', function (result) {
@@ -286,7 +350,6 @@
       return;
     }
 
-    // jsQR fallback
     var canvas = document.getElementById('scanner-canvas');
     var ctx = canvas.getContext('2d');
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -300,37 +363,30 @@
           var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
           if (code && code.data) onBarcodeFound(code.data);
         }, 300);
-      })
-      .catch(function () { stopScan(); showPage('pg-main'); });
+      }).catch(function () { stopScan(); showPage('pg-main'); });
   }
 
   function stopScan() {
     if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
     if (scanStream) {
-      if (scanStream.zxingReader) { scanStream.zxingReader.reset(); }
-      else { scanStream.getTracks().forEach(function (t) { t.stop(); }); }
+      if (scanStream.zxingReader) scanStream.zxingReader.reset();
+      else scanStream.getTracks().forEach(function (t) { t.stop(); });
       scanStream = null;
     }
   }
 
   function onBarcodeFound(barcode) {
     if (!barcode) return;
-
     if (barcode.startsWith('MT')) {
-      // S/N — deduplicate
       if (scannedItems.some(function (i) { return i.barcode === barcode; })) {
-        scanCooldown = true;
-        setTimeout(function () { scanCooldown = false; }, 1500);
-        return;
+        scanCooldown = true; setTimeout(function () { scanCooldown = false; }, 1500); return;
       }
       scanCooldown = true;
       if (navigator.vibrate) navigator.vibrate(80);
-      var item = { barcode: barcode, model: '' };
-      scannedItems.push(item);
+      scannedItems.push({ barcode: barcode, model: '' });
       updateScannedUI();
       setTimeout(function () { scanCooldown = false; }, 800);
     } else {
-      // P/N — assign to last S/N without a model
       var target = null;
       for (var i = scannedItems.length - 1; i >= 0; i--) {
         if (!scannedItems[i].model) { target = scannedItems[i]; break; }
@@ -344,62 +400,37 @@
     }
   }
 
-  function removeScanned(index) {
-    scannedItems.splice(index, 1);
-    updateScannedUI();
-  }
+  function removeScanned(index) { scannedItems.splice(index, 1); updateScannedUI(); }
 
   function updateScannedUI() {
     var count = scannedItems.length;
-    var countEl = document.getElementById('scan-count');
-    var listEl  = document.getElementById('scanned-list');
-    var doneBtn = document.getElementById('btn-done');
-
-    countEl.textContent = count > 0 ? '已掃 ' + count + ' 個' : '';
-    doneBtn.style.display = count > 0 ? 'block' : 'none';
-
-    listEl.innerHTML = scannedItems.map(function (item, i) {
-      return '<div class="chip">' +
-        '<div class="chip-info">' +
-          '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
-          (item.model ? '<div class="chip-model">' + esc(item.model) + '</div>' : '') +
-        '</div>' +
-        '<button class="chip-del" onclick="removeScanned(' + i + ')">×</button>' +
-      '</div>';
+    document.getElementById('scan-count').textContent = count > 0 ? '已掃 ' + count + ' 個' : '';
+    document.getElementById('btn-done').style.display = count > 0 ? 'block' : 'none';
+    document.getElementById('scanned-list').innerHTML = scannedItems.map(function (item, i) {
+      return '<div class="chip"><div class="chip-info">' +
+        '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
+        (item.model ? '<div class="chip-model">P/N: ' + esc(item.model) + '</div>' : '<div class="chip-model" style="color:#e37400">等待 P/N...</div>') +
+        '</div><button class="chip-del" onclick="removeScanned(' + i + ')">×</button></div>';
     }).join('');
   }
 
-  // ── Batch form ──────────────────────────────────────────────────
+  // ── Batch form ───────────────────────────────────────────────────
   function goToBatchForm() {
     stopScan();
-    // Build rack & U selects
     var rackSel = document.getElementById('b-rack');
     while (rackSel.options.length > 1) rackSel.remove(1);
-    rackOptions.forEach(function (v) {
-      var o = document.createElement('option'); o.value = v; o.textContent = v;
-      rackSel.appendChild(o);
-    });
+    rackOptions.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; rackSel.appendChild(o); });
     var uSel = document.getElementById('b-upos-default');
     while (uSel.options.length > 1) uSel.remove(1);
-    uOptions.forEach(function (v) {
-      var o = document.createElement('option'); o.value = v; o.textContent = v;
-      uSel.appendChild(o);
-    });
+    uOptions.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; uSel.appendChild(o); });
 
-    // Build per-item rows
-    var html = scannedItems.map(function (item, i) {
-      var uSelHtml = buildSelect('u-' + i, uOptions, '-- U 數 --');
+    document.getElementById('batch-items').innerHTML = scannedItems.map(function (item, i) {
       return '<div class="batch-item">' +
-        '<div class="batch-item-header">' +
-          '<div>' +
-            '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
-            (item.model ? '<div class="batch-item-model">' + esc(item.model) + '</div>' : '') +
-          '</div>' +
-        '</div>' +
-        uSelHtml +
-      '</div>';
+        '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
+        (item.model ? '<div class="batch-item-model">P/N: ' + esc(item.model) + '</div>' : '') +
+        buildSelect('u-' + i, uOptions, '-- U 數 --') +
+        '</div>';
     }).join('');
-    document.getElementById('batch-items').innerHTML = html;
     document.getElementById('batch-err').textContent = '';
     showPage('pg-batch');
   }
@@ -417,121 +448,187 @@
     var engineer = document.getElementById('b-engineer').value.trim();
     var rack     = document.getElementById('b-rack').value;
     var errEl    = document.getElementById('batch-err');
-
-    if (!engineer || !rack) {
-      errEl.textContent = '⚠ 請填寫工程師姓名和機櫃編號';
-      return;
-    }
-
-    // Validate all U positions
+    if (!engineer || !rack) { errEl.textContent = '⚠ 請填寫工程師姓名和機櫃編號'; return; }
     for (var i = 0; i < scannedItems.length; i++) {
       var sel = document.getElementById('u-' + i);
-      if (!sel || !sel.value) {
-        errEl.textContent = '⚠ 請設定第 ' + (i + 1) + ' 個 GBIC 的 U 數（條碼：' + scannedItems[i].barcode + '）';
-        return;
-      }
+      if (!sel || !sel.value) { errEl.textContent = '⚠ 請設定第 ' + (i + 1) + ' 個設備的 U 數'; return; }
     }
     errEl.textContent = '';
-
-    // Submit all sequentially
-    var promises = scannedItems.map(function (item, i) {
-      return callApi({
-        action:     'record',
-        type:       currentAction,
-        engineer:   engineer,
-        barcode:    item.barcode,
-        model:      item.model || '',
-        rack:       rack,
-        uPosition:  document.getElementById('u-' + i).value
-      });
-    });
-
-    Promise.all(promises).then(function (results) {
+    Promise.all(scannedItems.map(function (item, i) {
+      return callApi({ action: 'record', type: currentAction, engineer: engineer,
+        barcode: item.barcode, model: item.model || '', rack: rack,
+        uPosition: document.getElementById('u-' + i).value });
+    })).then(function (results) {
       var failed = results.filter(function (r) { return !r.success; });
-      document.getElementById('ok-title').textContent =
-        currentAction + '成功（共 ' + scannedItems.length + ' 個）';
+      document.getElementById('ok-title').textContent = currentAction + '成功（共 ' + scannedItems.length + ' 個）';
       document.getElementById('ok-detail').innerHTML =
         '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
         '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
-        '<p><span class="lbl">動作：</span><span class="' +
-          (currentAction === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(currentAction) + '</span></p>' +
-        (failed.length ? '<p style="color:#d93025">⚠ ' + failed.length + ' 筆送出失敗，請手動補登</p>' : '');
+        (failed.length ? '<p style="color:#d93025">⚠ ' + failed.length + ' 筆失敗，請手動補登</p>' : '');
       showPage('pg-ok');
-    }).catch(function () {
-      errEl.textContent = '網路錯誤，請稍後再試';
-    });
+    }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
   }
 
-  // ── Admin ───────────────────────────────────────────────────────
+  // ── 庫存上傳 ─────────────────────────────────────────────────────
+  function handleFileUpload(input) {
+    var file = input.files[0];
+    if (!file) return;
+    document.getElementById('ii-file-label').textContent = '📄 ' + file.name;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (!json || json.length < 2) { alert('檔案內容不足'); return; }
+      fileHeaders = json[0].map(function (h) { return String(h); });
+      fileRows = json.slice(1).filter(function (r) { return r.some(function (c) { return String(c).trim(); }); });
+
+      var snIdx = fileHeaders.findIndex(function (h) { return /s[\s\/\-]?n|serial/i.test(h); });
+      var pnIdx = fileHeaders.findIndex(function (h) { return /p[\s\/\-]?n|part/i.test(h); });
+
+      var mapEl = document.getElementById('ii-col-map');
+      mapEl.style.display = 'block';
+      var snSel = document.getElementById('ii-sn-col');
+      var pnSel = document.getElementById('ii-pn-col');
+      snSel.innerHTML = '<option value="-1">（不使用）</option>' +
+        fileHeaders.map(function (h, i) { return '<option value="' + i + '">' + esc(h) + '</option>'; }).join('');
+      pnSel.innerHTML = '<option value="-1">（不使用）</option>' +
+        fileHeaders.map(function (h, i) { return '<option value="' + i + '">' + esc(h) + '</option>'; }).join('');
+      if (snIdx >= 0) snSel.value = snIdx;
+      if (pnIdx >= 0) pnSel.value = pnIdx;
+
+      document.getElementById('ii-row-count').textContent = '共 ' + fileRows.length + ' 筆資料';
+      renderFilePreview();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderFilePreview() {
+    var head = '<table><tr>' + fileHeaders.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
+    var body = fileRows.slice(0, 5).map(function (r) {
+      return '<tr>' + fileHeaders.map(function (_, i) { return '<td>' + esc(r[i] || '') + '</td>'; }).join('') + '</tr>';
+    }).join('');
+    document.getElementById('ii-preview').innerHTML = head + body + '</table>';
+  }
+
+  function submitInventoryIn() {
+    var date    = document.getElementById('ii-date').value;
+    var model   = document.getElementById('ii-model').value.trim();
+    var qty     = document.getElementById('ii-qty').value;
+    var signee  = document.getElementById('ii-signee').value.trim();
+    var errEl   = document.getElementById('ii-err');
+    var okEl    = document.getElementById('ii-ok');
+    errEl.textContent = ''; okEl.textContent = '';
+
+    if (!date || !model || !qty || !signee) { errEl.textContent = '⚠ 請填寫所有必填欄位'; return; }
+
+    var items = [];
+    if (fileRows.length > 0) {
+      var snIdx = parseInt(document.getElementById('ii-sn-col').value);
+      var pnIdx = parseInt(document.getElementById('ii-pn-col').value);
+      items = fileRows.map(function (r) {
+        return { sn: snIdx >= 0 ? String(r[snIdx] || '') : '', pn: pnIdx >= 0 ? String(r[pnIdx] || '') : '' };
+      }).filter(function (i) { return i.sn || i.pn; });
+    }
+
+    callApi({ action: 'recordInventoryIn', date: date, model: model, quantity: qty, signee: signee, items: items })
+      .then(function (data) {
+        if (data.success) {
+          okEl.textContent = '✅ 入庫成功（' + (items.length || 1) + ' 筆）';
+          document.getElementById('ii-file').value = '';
+          document.getElementById('ii-file-label').textContent = '📄 點此選擇檔案（.csv / .xlsx / .xls）';
+          document.getElementById('ii-col-map').style.display = 'none';
+          fileRows = []; fileHeaders = [];
+        } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
+      }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+  }
+
+  // ── 領貨出庫 ─────────────────────────────────────────────────────
+  function submitInventoryOut() {
+    var date      = document.getElementById('io-date').value;
+    var device    = document.getElementById('io-device').value.trim();
+    var model     = document.getElementById('io-model').value.trim();
+    var qty       = document.getElementById('io-qty').value;
+    var csiStaff  = document.getElementById('io-csi').value.trim();
+    var recipient = document.getElementById('io-recipient').value.trim();
+    var errEl     = document.getElementById('io-err');
+    errEl.textContent = '';
+
+    if (!date || !device || !model || !qty || !csiStaff || !recipient) {
+      errEl.textContent = '⚠ 請填寫所有欄位'; return;
+    }
+    callApi({ action: 'recordInventoryOut', date: date, deviceType: device, model: model,
+      quantity: qty, csiStaff: csiStaff, recipient: recipient })
+      .then(function (data) {
+        if (data.success) {
+          document.getElementById('ok-title').textContent = '出庫紀錄已送出';
+          document.getElementById('ok-detail').innerHTML =
+            '<p><span class="lbl">領用設備：</span>' + esc(device) + '</p>' +
+            '<p><span class="lbl">型號：</span>' + esc(model) + '</p>' +
+            '<p><span class="lbl">數量：</span>' + esc(qty) + '</p>' +
+            '<p><span class="lbl">CSI 出庫：</span>' + esc(csiStaff) + '</p>' +
+            '<p><span class="lbl">領用人：</span>' + esc(recipient) + '</p>';
+          showPage('pg-ok');
+        } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
+      }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+  }
+
+  // ── Admin ────────────────────────────────────────────────────────
   function adminQueryRack() {
-    var rack = document.getElementById('a-rack').value;
-    if (!rack) return;
+    var rack = document.getElementById('a-rack').value; if (!rack) return;
     callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
       var el = document.getElementById('res-rack');
-      if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無 GBIC 在外</p>'; return; }
-      el.innerHTML = '<table>' +
-        '<tr><th>U 數</th><th>條碼</th><th>型號</th><th>工程師</th><th>時間</th></tr>' +
+      if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無設備上架</p>'; return; }
+      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>工程師</th><th>時間</th></tr>' +
         data.map(function (r) {
           return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
             '<td>' + (r.model ? esc(r.model) : '—') + '</td><td>' + esc(r.engineer) + '</td>' +
             '<td>' + esc(fmtDate(r.timestamp)) + '</td></tr>';
         }).join('') + '</table>';
-    }).catch(function () {
-      document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>';
-    });
+    }).catch(function () { document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
 
   function adminQueryBarcode() {
-    var barcode = document.getElementById('a-barcode').value.trim();
-    if (!barcode) return;
+    var barcode = document.getElementById('a-barcode').value.trim(); if (!barcode) return;
     callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
       var el = document.getElementById('res-barcode');
-      if (!data.length) { el.innerHTML = '<p class="no-data">查無此條碼紀錄</p>'; return; }
-      el.innerHTML = '<table>' +
-        '<tr><th>時間</th><th>動作</th><th>機櫃</th><th>U 數</th><th>工程師</th></tr>' +
+      if (!data.length) { el.innerHTML = '<p class="no-data">查無此 S/N 紀錄</p>'; return; }
+      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>工程師</th></tr>' +
         data.map(function (r) {
           return '<tr><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
-            '<td class="' + (r.type === '領出' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
-            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td>' +
-            '<td>' + esc(r.engineer) + '</td></tr>';
+            '<td class="' + (r.type === '上架' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
+            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td><td>' + esc(r.engineer) + '</td></tr>';
         }).join('') + '</table>';
-    }).catch(function () {
-      document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>';
-    });
+    }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
 
   function exportCSV() {
     callApi({ action: 'export' }).then(function (data) {
-      var headers = ['條碼', '型號', '機櫃', 'U數', '狀態', '工程師', '最後操作時間'];
+      var headers = ['S/N', 'P/N', '機櫃', 'U數', '狀態', '工程師', '最後操作時間'];
       var rows = data.map(function (r) {
         return [r.barcode, r.model, r.rack, r.uPosition, r.type, r.engineer, fmtDate(r.timestamp)];
       });
       var csv = [headers].concat(rows).map(function (row) {
-        return row.map(function (v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(',');
+        return row.map(function (v) { return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',');
       }).join('\r\n');
       var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-      var url  = URL.createObjectURL(blob);
-      var a    = document.createElement('a');
-      a.href = url;
-      a.download = 'GBIC_庫存_' + new Date().toLocaleDateString('zh-TW').replace(/\//g, '-') + '.csv';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a); URL.revokeObjectURL(url);
-    }).catch(function () { alert('匯出失敗，請稍後再試'); });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'GMI_上架_' + new Date().toLocaleDateString('zh-TW').replace(/\//g, '-') + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    }).catch(function () { alert('匯出失敗'); });
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────
   function fmtDate(ts) {
     if (!ts) return '—';
-    try { return new Date(ts).toLocaleString('zh-TW', { hour12: false }); }
-    catch (e) { return String(ts); }
+    try { return new Date(ts).toLocaleString('zh-TW', { hour12: false }); } catch (e) { return String(ts); }
   }
 
   function callApi(payload) {
     return fetch(SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify(payload),
-      redirect: 'follow'
+      method: 'POST', headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload), redirect: 'follow'
     }).then(function (r) { return r.json(); });
   }
 </script>
