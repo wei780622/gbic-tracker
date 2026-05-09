@@ -315,6 +315,8 @@
 
   function onBarcodeFound(barcode) {
     if (!barcode) return;
+    // Only accept S/N starting with MT
+    if (!barcode.startsWith('MT')) return;
     // Deduplicate
     if (scannedItems.some(function (i) { return i.barcode === barcode; })) {
       scanCooldown = true;
