@@ -315,29 +315,33 @@
 
   function onBarcodeFound(barcode) {
     if (!barcode) return;
-    // Only accept S/N starting with MT
-    if (!barcode.startsWith('MT')) return;
-    // Deduplicate
-    if (scannedItems.some(function (i) { return i.barcode === barcode; })) {
+
+    if (barcode.startsWith('MT')) {
+      // S/N — deduplicate
+      if (scannedItems.some(function (i) { return i.barcode === barcode; })) {
+        scanCooldown = true;
+        setTimeout(function () { scanCooldown = false; }, 1500);
+        return;
+      }
       scanCooldown = true;
-      setTimeout(function () { scanCooldown = false; }, 1500);
-      return;
-    }
-    scanCooldown = true;
-    // Vibrate feedback
-    if (navigator.vibrate) navigator.vibrate(80);
-
-    var item = { barcode: barcode, model: '' };
-    scannedItems.push(item);
-    updateScannedUI();
-
-    // Fetch model in background
-    callApi({ action: 'getModel', barcode: barcode }).then(function (data) {
-      item.model = data.model || '';
+      if (navigator.vibrate) navigator.vibrate(80);
+      var item = { barcode: barcode, model: '' };
+      scannedItems.push(item);
       updateScannedUI();
-    }).catch(function () {}).finally(function () {
       setTimeout(function () { scanCooldown = false; }, 800);
-    });
+    } else {
+      // P/N — assign to last S/N without a model
+      var target = null;
+      for (var i = scannedItems.length - 1; i >= 0; i--) {
+        if (!scannedItems[i].model) { target = scannedItems[i]; break; }
+      }
+      if (!target) return;
+      scanCooldown = true;
+      if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+      target.model = barcode;
+      updateScannedUI();
+      setTimeout(function () { scanCooldown = false; }, 800);
+    }
   }
 
   function removeScanned(index) {
