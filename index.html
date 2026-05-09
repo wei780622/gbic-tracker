@@ -848,6 +848,8 @@
     document.getElementById('ocr-modal').classList.remove('open');
   }
 
+  var __inBatchStore = [];
+
   function adminQueryIn() {
     var dateFrom = document.getElementById('in-date-from').value;
     var dateTo   = document.getElementById('in-date-to').value;
@@ -855,21 +857,20 @@
       var el = document.getElementById('res-in');
       if (data && data.error) { el.innerHTML = '<p class="no-data">錯誤：' + esc(data.error) + '</p>'; return; }
       if (!Array.isArray(data) || !data.length) { el.innerHTML = '<p class="no-data">此區間無入庫紀錄</p>'; return; }
+      __inBatchStore = data;
 
       el.innerHTML = data.map(function (batch, bi) {
         var hasSN = batch.items.some(function (i) { return i.sn; });
         var snCount = batch.items.filter(function (i) { return i.sn; }).length;
         var allRows = batch.items.map(function (i) { return i._row; });
-        var batchData = JSON.stringify({ batchId: batch.batchId, date: batch.date, model: batch.model, quantity: batch.quantity, signee: batch.signee }).replace(/'/g, '&#39;');
-        var snList = batch.items.map(function (item) {
-          var rowData = JSON.stringify({ row: item._row, sn: item.sn, pn: item.pn }).replace(/'/g, '&#39;');
+        var snList = batch.items.map(function (item, ii) {
           return '<div class="sn-row" id="snrow-' + item._row + '">' +
-            '<span class="sn-display-' + item._row + '">' +
+            '<span id="sn-display-' + item._row + '" style="flex:1">' +
               (item.sn ? esc(item.sn) : '—') +
               (item.pn ? ' <span style="color:#888">/ ' + esc(item.pn) + '</span>' : '') +
             '</span>' +
-            '<div style="display:flex;gap:4px">' +
-              '<button onclick="editSnRow(\'' + rowData + '\',' + bi + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">編輯</button>' +
+            '<div style="display:flex;gap:4px;flex-shrink:0">' +
+              '<button onclick="editSnRow(' + bi + ',' + ii + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">編輯</button>' +
               '<button onclick="deleteRecord(\'入庫紀錄\',' + item._row + ',adminQueryIn)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">刪</button>' +
             '</div>' +
             '</div>';
@@ -882,7 +883,7 @@
               '<span>' + esc(fmtDate(batch.date)) + '　簽收：' + esc(batch.signee) + '</span>' +
             '</div>' +
             '<div class="batch-actions">' +
-              '<button onclick="event.stopPropagation();showAddSn(\'' + batchData + '\',' + bi + ')" style="background:#0f9d58;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">＋新增</button>' +
+              '<button onclick="event.stopPropagation();showAddSn(' + bi + ')" style="background:#0f9d58;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">＋新增</button>' +
               (hasSN ? '<button onclick="event.stopPropagation();deleteBatch(' + JSON.stringify(allRows) + ')" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除整批</button>' : '') +
               '<span class="batch-toggle" id="toggle-' + bi + '">▶</span>' +
             '</div>' +
@@ -890,12 +891,12 @@
           '<div class="batch-body" id="body-' + bi + '">' +
             snList +
             '<div id="add-sn-area-' + bi + '" style="display:none;padding:8px 14px;border-top:1px solid #eee">' +
-              '<div style="display:flex;gap:6px;margin-bottom:4px">' +
-                '<input id="add-sn-val-' + bi + '" type="text" placeholder="S/N" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+              '<div style="display:flex;gap:6px;margin-bottom:6px">' +
+                '<input id="add-sn-val-' + bi + '" type="text" placeholder="S/N" style="flex:1;padding:8px;border:1px solid #1a73e8;border-radius:6px;font-size:13px">' +
                 '<input id="add-pn-val-' + bi + '" type="text" placeholder="P/N（選填）" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
               '</div>' +
               '<div style="display:flex;gap:6px">' +
-                '<button id="add-sn-btn-' + bi + '" style="flex:1;background:#0f9d58;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer;font-size:13px">確認新增</button>' +
+                '<button id="add-sn-btn-' + bi + '" style="flex:1;background:#0f9d58;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer;font-size:13px;font-weight:600">✓ 確認新增</button>' +
                 '<button onclick="document.getElementById(\'add-sn-area-' + bi + '\').style.display=\'none\'" style="flex:1;background:#757575;color:white;border:none;border-radius:6px;padding:8px;cursor:pointer;font-size:13px">取消</button>' +
               '</div>' +
             '</div>' +
@@ -924,19 +925,21 @@
       }).catch(function () { alert('網路錯誤'); });
   }
 
-  function editSnRow(rowDataStr, bi) {
-    var d;
-    try { d = JSON.parse(rowDataStr); } catch(e) { return; }
-    var row = d.row;
+  function editSnRow(bi, ii) {
+    var batch = __inBatchStore[bi];
+    if (!batch) return;
+    var item = batch.items[ii];
+    if (!item) return;
+    var row = item._row;
     var snRow = document.getElementById('snrow-' + row);
     if (!snRow) return;
-    snRow.innerHTML =
-      '<input id="edit-sn-' + row + '" type="text" value="' + esc(d.sn || '') + '" placeholder="S/N" style="flex:1;padding:6px;border:1px solid #1a73e8;border-radius:6px;font-size:13px;min-width:0">' +
-      '<input id="edit-pn-' + row + '" type="text" value="' + esc(d.pn || '') + '" placeholder="P/N（選填）" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;min-width:0;margin:0 4px">' +
-      '<button onclick="saveSnRow(' + row + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">儲存</button>' +
-      '<button onclick="adminQueryIn()" style="background:#757575;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;margin-left:4px">取消</button>';
     snRow.style.flexWrap = 'wrap';
-    snRow.style.gap = '4px';
+    snRow.style.gap = '6px';
+    snRow.innerHTML =
+      '<input id="edit-sn-' + row + '" type="text" value="' + esc(item.sn || '') + '" placeholder="S/N" style="flex:1;min-width:120px;padding:7px;border:2px solid #1a73e8;border-radius:6px;font-size:13px">' +
+      '<input id="edit-pn-' + row + '" type="text" value="' + esc(item.pn || '') + '" placeholder="P/N（選填）" style="flex:1;min-width:100px;padding:7px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+      '<button onclick="saveSnRow(' + row + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:12px;font-weight:600">✓ 儲存</button>' +
+      '<button onclick="adminQueryIn()" style="background:#757575;color:white;border:none;border-radius:6px;padding:7px 10px;cursor:pointer;font-size:12px">取消</button>';
     document.getElementById('edit-sn-' + row).focus();
   }
 
@@ -950,12 +953,12 @@
       }).catch(function () { alert('網路錯誤'); });
   }
 
-  function showAddSn(batchDataStr, bi) {
-    var d;
-    try { d = JSON.parse(batchDataStr); } catch(e) { return; }
-    var area = document.getElementById('add-sn-area-' + bi);
+  function showAddSn(bi) {
+    var batch = __inBatchStore[bi];
+    if (!batch) return;
     var body = document.getElementById('body-' + bi);
     var toggle = document.getElementById('toggle-' + bi);
+    var area = document.getElementById('add-sn-area-' + bi);
     if (!area) return;
     if (body && !body.classList.contains('open')) {
       body.classList.add('open');
@@ -969,11 +972,11 @@
         var pn = document.getElementById('add-pn-val-' + bi).value.trim();
         if (!sn) { alert('請輸入 S/N'); return; }
         btn.disabled = true; btn.textContent = '新增中…';
-        callApi({ action: 'addToBatch', batchId: d.batchId, date: d.date, model: d.model, quantity: d.quantity, signee: d.signee, sn: sn, pn: pn })
+        callApi({ action: 'addToBatch', batchId: batch.batchId, date: batch.date, model: batch.model, quantity: batch.quantity, signee: batch.signee, sn: sn, pn: pn })
           .then(function (r) {
             if (r.success) adminQueryIn();
-            else { btn.disabled = false; btn.textContent = '確認新增'; alert('新增失敗：' + (r.error || '未知')); }
-          }).catch(function () { btn.disabled = false; btn.textContent = '確認新增'; alert('網路錯誤'); });
+            else { btn.disabled = false; btn.textContent = '✓ 確認新增'; alert('新增失敗：' + (r.error || '未知')); }
+          }).catch(function () { btn.disabled = false; btn.textContent = '✓ 確認新增'; alert('網路錯誤'); });
       };
     }
     document.getElementById('add-sn-val-' + bi).value = '';
