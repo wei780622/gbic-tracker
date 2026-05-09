@@ -1018,11 +1018,12 @@
 
         return '<div class="batch-card">' +
           '<div class="batch-header" onclick="toggleBatch(' + bi + ')">' +
-            '<div class="batch-meta">' +
+            '<div class="batch-meta" id="batch-meta-' + bi + '">' +
               '<strong>' + esc(batch.model) + '　數量：' + esc(batch.quantity) + (snCount ? '　S/N：' + snCount + '筆' : '') + '</strong>' +
               '<span>' + esc(fmtDate(batch.date)) + '　簽收：' + esc(batch.signee) + '</span>' +
             '</div>' +
             '<div class="batch-actions">' +
+              '<button onclick="event.stopPropagation();editBatch(' + bi + ')" style="background:#e37400;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
               '<button onclick="event.stopPropagation();showAddSn(' + bi + ')" style="background:#0f9d58;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">＋新增</button>' +
               (hasSN ? '<button onclick="event.stopPropagation();deleteBatch(' + JSON.stringify(allRows) + ')" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除整批</button>' : '') +
               '<span class="batch-toggle" id="toggle-' + bi + '">▶</span>' +
@@ -1122,6 +1123,35 @@
     document.getElementById('add-sn-val-' + bi).value = '';
     document.getElementById('add-pn-val-' + bi).value = '';
     document.getElementById('add-sn-val-' + bi).focus();
+  }
+
+  function editBatch(bi) {
+    var batch = __inBatchStore[bi];
+    if (!batch) return;
+    var meta = document.getElementById('batch-meta-' + bi);
+    if (!meta) return;
+    meta.innerHTML =
+      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:2px 0">' +
+        '<input id="edit-model-' + bi + '" type="text" value="' + esc(batch.model) + '" placeholder="型號" style="flex:1;min-width:100px;padding:6px 8px;border:2px solid #e37400;border-radius:6px;font-size:13px">' +
+        '<input id="edit-qty-' + bi + '" type="number" value="' + esc(batch.quantity) + '" placeholder="數量" style="width:70px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:13px">' +
+        '<button onclick="saveBatch(' + bi + ')" style="background:#e37400;color:white;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600">✓ 儲存</button>' +
+        '<button onclick="adminQueryIn()" style="background:#757575;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px">取消</button>' +
+      '</div>' +
+      '<span style="font-size:12px;color:#888">' + esc(fmtDate(batch.date)) + '　簽收：' + esc(batch.signee) + '</span>';
+    document.getElementById('edit-model-' + bi).focus();
+  }
+
+  function saveBatch(bi) {
+    var batch = __inBatchStore[bi];
+    if (!batch) return;
+    var model = document.getElementById('edit-model-' + bi).value.trim();
+    var qty   = document.getElementById('edit-qty-' + bi).value.trim();
+    var rows  = batch.items.map(function(item) { return item._row; });
+    callApi({ action: 'updateBatch', rows: rows, model: model, quantity: qty })
+      .then(function(d) {
+        if (d.success) adminQueryIn();
+        else alert('儲存失敗：' + (d.error || '未知'));
+      }).catch(function() { alert('網路錯誤'); });
   }
 
   function adminQueryOut() {
