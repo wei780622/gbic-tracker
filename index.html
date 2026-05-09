@@ -811,6 +811,27 @@
     });
   }
 
+  // 壓縮圖片並轉 base64 供 Gemini 使用
+  function compressToBase64(file) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        var maxDim = 1600;
+        var scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        var dataUrl = c.toDataURL('image/jpeg', 0.85);
+        resolve(dataUrl.split(',')[1]);
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); reject(); };
+      img.src = url;
+    });
+  }
+
   async function runOcr(input) {
     var files = Array.from(input.files);
     if (!files.length) return;
@@ -824,50 +845,41 @@
 
     function updateStatus(msg) {
       document.getElementById('ocr-status').textContent = msg ||
-        (done < total ? ('掃描中… ' + done + ' / ' + total + ' 張') : ('完成，共找到 ' + ocrResults.length + ' 個條碼'));
-      document.getElementById('ocr-bar').style.width = Math.round((done / total) * 100) + '%';
+        (done < total ? ('辨識中… ' + done + ' / ' + total + ' 張') : ('完成，共找到 ' + ocrResults.length + ' 個 S/N'));
+      document.getElementById('ocr-bar').style.width = Math.round(done / total * 100) + '%';
     }
     updateStatus();
 
     for (var fi = 0; fi < files.length; fi++) {
       try {
-        // ── 第一步：條碼偵測（最準）──────────────────────
-        var canvas = await fileToCanvas(files[fi]);
-        updateStatus('第 ' + (fi+1) + ' 張：分格掃描條碼中…');
-        var barcodes = await detectBarcodes(canvas, function(i, total) {
-          document.getElementById('ocr-bar').style.width =
-            Math.round((fi + i / total) / files.length * 100) + '%';
-        });
+        // ── 第一步：Gemini 辨識（最準確）─────────────────
+        updateStatus('第 ' + (fi+1) + ' 張：Gemini 辨識中…');
+        var b64 = await compressToBase64(files[fi]);
+        var geminiResult = await callApi({ action: 'ocrWithGemini', imageBase64: b64, mimeType: 'image/jpeg' });
         var gotSN = false;
 
-        if (barcodes.length) {
+        if (geminiResult.success && geminiResult.sns && geminiResult.sns.length) {
+          geminiResult.sns.forEach(function(sn) {
+            var clean = sn.trim().toUpperCase().replace(/[^A-Z0-9\-]/g, '');
+            if (clean.length >= 4 && !seen[clean]) { seen[clean] = true; ocrResults.push(clean); gotSN = true; }
+          });
+        }
+
+        // ── 第二步：Gemini 找不到則用分格條碼掃描 ────────
+        if (!gotSN) {
+          updateStatus('第 ' + (fi+1) + ' 張：改用條碼掃描…');
+          var canvas = await fileToCanvas(files[fi]);
+          var barcodes = await detectBarcodes(canvas, function(i, t) {
+            document.getElementById('ocr-bar').style.width =
+              Math.round((fi + i / t) / files.length * 100) + '%';
+          });
           barcodes.forEach(function(val) {
             var clean = val.trim().toUpperCase().replace(/[^A-Z0-9\-\/]/g, '');
-            // 只保留 S/N：MT 開頭，或 2-4 英文 + 6 位以上數字/英數（排除 P/N、Carton ID 等）
-            var isSN = /^MT[A-Z0-9]{4,}/i.test(clean) ||
-                       /^[A-Z]{2,4}[0-9]{6,}[A-Z0-9]*$/.test(clean);
+            var isSN = /^MT[A-Z0-9]{4,}/i.test(clean) || /^[A-Z]{2,4}[0-9]{6,}[A-Z0-9]*$/.test(clean);
             if (isSN && !seen[clean]) { seen[clean] = true; ocrResults.push(clean); gotSN = true; }
           });
         }
-
-        // ── 第二步：若條碼未找到，退回 Tesseract OCR ─────
-        if (!gotSN) {
-          updateStatus('第 ' + (fi+1) + ' 張：未偵測到條碼，改用文字辨識…');
-          var fidx = fi;
-          var pp = await preprocessForOcr(files[fi]);
-          var result = await Tesseract.recognize(pp, 'eng', {
-            logger: function(m) {
-              if (m.status === 'recognizing text')
-                document.getElementById('ocr-bar').style.width =
-                  Math.round((fidx + m.progress) / total * 100) + '%';
-            },
-            tessedit_pageseg_mode: '11',
-          });
-          extractSN(result.data.text).forEach(function(sn) {
-            if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
-          });
-        }
-      } catch(e) {}
+      } catch(e) { console.error('OCR error:', e); }
       done++;
       updateStatus();
       renderOcrList();
