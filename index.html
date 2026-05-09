@@ -56,6 +56,21 @@
     th { background: #f0f4ff; font-weight: 600; white-space: nowrap; }
     hr { border: none; border-top: 1px solid #e0e0e0; margin: 16px 0; }
     .no-data { color: #888; font-size: 14px; text-align: center; padding: 16px; }
+    .batch-card { background: white; border-radius: 10px; margin: 8px 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow: hidden; }
+    .batch-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; cursor: pointer; }
+    .batch-header:active { background: #f5f5f5; }
+    .batch-meta { flex: 1; }
+    .batch-meta strong { font-size: 14px; display: block; }
+    .batch-meta span { font-size: 12px; color: #888; }
+    .batch-actions { display: flex; gap: 6px; align-items: center; }
+    .batch-toggle { font-size: 18px; color: #888; transition: transform .2s; }
+    .batch-toggle.open { transform: rotate(90deg); }
+    .batch-body { display: none; border-top: 1px solid #eee; padding: 8px 0; }
+    .batch-body.open { display: block; }
+    .sn-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 14px; font-size: 13px; border-bottom: 1px solid #f5f5f5; }
+    .sn-row:last-child { border-bottom: none; }
+    .date-range { display: flex; gap: 8px; margin-bottom: 8px; }
+    .date-range .form-group { flex: 1; margin: 0; }
     .chip {
       display: flex; align-items: center; justify-content: space-between;
       background: white; border-radius: 8px; padding: 10px 12px;
@@ -244,8 +259,12 @@
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
   <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">庫存入庫紀錄</label>
-  <button class="btn btn-orange" onclick="adminQueryIn()">查詢所有入庫紀錄</button>
-  <div id="res-in" style="overflow-x:auto;margin-top:8px"></div>
+  <div class="date-range">
+    <div class="form-group"><label>起始日期</label><input type="date" id="in-date-from"></div>
+    <div class="form-group"><label>結束日期</label><input type="date" id="in-date-to"></div>
+  </div>
+  <button class="btn btn-orange" onclick="adminQueryIn()">查詢入庫紀錄</button>
+  <div id="res-in" style="margin-top:8px"></div>
 
   <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">領貨出庫紀錄</label>
@@ -287,6 +306,9 @@
     }
     document.getElementById('ii-date').value = today();
     document.getElementById('io-date').value = today();
+    var d30 = new Date(); d30.setDate(d30.getDate() - 30);
+    document.getElementById('in-date-from').value = d30.toISOString().slice(0, 10);
+    document.getElementById('in-date-to').value = today();
 
     callApi({ action: 'getOptions' }).then(function (data) {
       rackOptions = data.racks;
@@ -638,27 +660,58 @@
   }
 
   function adminQueryIn() {
-    callApi({ action: 'queryInventoryIn' }).then(function (data) {
+    var dateFrom = document.getElementById('in-date-from').value;
+    var dateTo   = document.getElementById('in-date-to').value;
+    callApi({ action: 'queryInventoryIn', dateFrom: dateFrom || '', dateTo: dateTo || '' }).then(function (data) {
       var el = document.getElementById('res-in');
       if (data && data.error) { el.innerHTML = '<p class="no-data">錯誤：' + esc(data.error) + '</p>'; return; }
-      if (!Array.isArray(data) || !data.length) { el.innerHTML = '<p class="no-data">尚無入庫紀錄</p>'; return; }
-      el.innerHTML = '<table>' +
-        '<tr><th>日期</th><th>型號</th><th>數量</th><th>簽收人</th><th>S/N</th><th>P/N</th><th></th></tr>' +
-        data.map(function (r) {
-          var row = r._row; var sheet = r._sheet;
-          return '<tr>' +
-            '<td>' + esc(fmtDate(r.date)) + '</td>' +
-            '<td>' + esc(r.model) + '</td>' +
-            '<td>' + esc(r.quantity) + '</td>' +
-            '<td>' + esc(r.signee) + '</td>' +
-            '<td>' + (r.sn ? esc(r.sn) : '—') + '</td>' +
-            '<td>' + (r.pn ? esc(r.pn) : '—') + '</td>' +
-            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryIn)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td>' +
-            '</tr>';
-        }).join('') + '</table>';
+      if (!Array.isArray(data) || !data.length) { el.innerHTML = '<p class="no-data">此區間無入庫紀錄</p>'; return; }
+
+      el.innerHTML = data.map(function (batch, bi) {
+        var hasSN = batch.items.some(function (i) { return i.sn; });
+        var snCount = batch.items.filter(function (i) { return i.sn; }).length;
+        var allRows = batch.items.map(function (i) { return i._row; });
+        var snList = hasSN ? batch.items.map(function (item, ii) {
+          return '<div class="sn-row">' +
+            '<span>' + (item.sn ? esc(item.sn) : '—') + (item.pn ? ' <span style="color:#888">/ ' + esc(item.pn) + '</span>' : '') + '</span>' +
+            '<button onclick="deleteRecord(\'入庫紀錄\',' + item._row + ',adminQueryIn)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">刪</button>' +
+            '</div>';
+        }).join('') : '';
+
+        return '<div class="batch-card">' +
+          '<div class="batch-header" onclick="toggleBatch(' + bi + ')">' +
+            '<div class="batch-meta">' +
+              '<strong>' + esc(batch.model) + '　數量：' + esc(batch.quantity) + (snCount ? '　S/N：' + snCount + '筆' : '') + '</strong>' +
+              '<span>' + esc(fmtDate(batch.date)) + '　簽收：' + esc(batch.signee) + '</span>' +
+            '</div>' +
+            '<div class="batch-actions">' +
+              (hasSN ? '<button onclick="event.stopPropagation();deleteBatch(' + JSON.stringify(allRows) + ')" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除整批</button>' : '') +
+              '<span class="batch-toggle" id="toggle-' + bi + '">▶</span>' +
+            '</div>' +
+          '</div>' +
+          (hasSN ? '<div class="batch-body" id="body-' + bi + '">' + snList + '</div>' : '') +
+        '</div>';
+      }).join('');
     }).catch(function () {
       document.getElementById('res-in').innerHTML = '<p class="no-data">查詢失敗</p>';
     });
+  }
+
+  function toggleBatch(i) {
+    var body   = document.getElementById('body-' + i);
+    var toggle = document.getElementById('toggle-' + i);
+    if (!body) return;
+    body.classList.toggle('open');
+    toggle.classList.toggle('open');
+  }
+
+  function deleteBatch(rows) {
+    if (!confirm('確定刪除整批 ' + rows.length + ' 筆紀錄？')) return;
+    callApi({ action: 'deleteBatch', rows: rows })
+      .then(function (d) {
+        if (d.success) adminQueryIn();
+        else alert('刪除失敗：' + (d.error || '未知'));
+      }).catch(function () { alert('網路錯誤'); });
   }
 
   function adminQueryOut() {
