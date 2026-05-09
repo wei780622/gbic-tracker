@@ -144,7 +144,7 @@
     <div class="scan-frame"></div>
   </div>
   <p class="hint">對準條碼，連續掃多個；MT開頭=S/N，其他=P/N</p>
-  <button class="btn btn-orange" onclick="document.getElementById('ocr-file').click()" style="margin-top:4px">📷 上傳照片辨識 S/N</button>
+  <button class="btn btn-orange" onclick="openOcr('scan')" style="margin-top:4px">📷 上傳照片辨識 S/N</button>
   <div class="scan-count" id="scan-count"></div>
   <div id="scanned-list"></div>
   <button class="btn btn-green" id="btn-done" onclick="goToBatchForm()" style="display:none">✓ 完成掃描，填寫資料</button>
@@ -205,9 +205,12 @@
   </div>
 
   <hr>
-  <label style="font-size:13px;color:#666;margin-bottom:6px;display:block">上傳含 S/N、P/N 的 CSV 或 Excel（選填）</label>
+  <label style="font-size:13px;color:#666;margin-bottom:6px;display:block">S/N 清單（選填）</label>
+  <button class="btn btn-orange" onclick="openOcr('inventory')" style="margin-bottom:6px">📷 上傳照片辨識 S/N</button>
+  <div id="ii-sn-list" style="margin-bottom:8px"></div>
+
   <div class="file-upload-area" onclick="document.getElementById('ii-file').click()">
-    <div id="ii-file-label">📄 點此選擇檔案（.csv / .xlsx / .xls）</div>
+    <div id="ii-file-label">📄 或上傳 CSV / Excel（.csv / .xlsx / .xls）</div>
   </div>
   <input type="file" id="ii-file" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileUpload(this)">
 
@@ -594,6 +597,8 @@
       items = fileRows.map(function (r) {
         return { sn: snIdx >= 0 ? String(r[snIdx] || '') : '', pn: pnIdx >= 0 ? String(r[pnIdx] || '') : '' };
       }).filter(function (i) { return i.sn || i.pn; });
+    } else if (inventorySnItems.length > 0) {
+      items = inventorySnItems.slice();
     }
 
     callApi({ action: 'recordInventoryIn', date: date, model: model, quantity: qty, signee: signee, items: items })
@@ -601,9 +606,10 @@
         if (data.success) {
           okEl.textContent = '✅ 入庫成功（' + (items.length || 1) + ' 筆）';
           document.getElementById('ii-file').value = '';
-          document.getElementById('ii-file-label').textContent = '📄 點此選擇檔案（.csv / .xlsx / .xls）';
+          document.getElementById('ii-file-label').textContent = '📄 或上傳 CSV / Excel（.csv / .xlsx / .xls）';
           document.getElementById('ii-col-map').style.display = 'none';
           fileRows = []; fileHeaders = [];
+          inventorySnItems = []; renderInventorySnList();
         } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
       }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
   }
@@ -689,6 +695,13 @@
 
   // ── OCR ─────────────────────────────────────────────────────────
   var ocrResults = [];
+  var ocrContext = 'scan'; // 'scan' or 'inventory'
+  var inventorySnItems = []; // [{sn, pn}] for 庫存上傳
+
+  function openOcr(context) {
+    ocrContext = context || 'scan';
+    document.getElementById('ocr-file').click();
+  }
 
   function runOcr(input) {
     var file = input.files[0];
@@ -773,18 +786,46 @@
 
   function confirmOcr() {
     var inputs = document.getElementById('ocr-list').querySelectorAll('input');
-    var added = 0;
+    var vals = [];
     inputs.forEach(function (inp) {
       var val = inp.value.trim();
-      if (!val) return;
-      if (!scannedItems.some(function (i) { return i.barcode === val; })) {
-        scannedItems.push({ barcode: val, model: '' });
-        added++;
-      }
+      if (val) vals.push(val);
     });
     closeOcr();
-    updateScannedUI();
-    if (added > 0) document.getElementById('btn-done').style.display = 'block';
+
+    if (ocrContext === 'inventory') {
+      vals.forEach(function (val) {
+        if (!inventorySnItems.some(function (i) { return i.sn === val; })) {
+          inventorySnItems.push({ sn: val, pn: '' });
+        }
+      });
+      renderInventorySnList();
+    } else {
+      var added = 0;
+      vals.forEach(function (val) {
+        if (!scannedItems.some(function (i) { return i.barcode === val; })) {
+          scannedItems.push({ barcode: val, model: '' });
+          added++;
+        }
+      });
+      updateScannedUI();
+      if (added > 0) document.getElementById('btn-done').style.display = 'block';
+    }
+  }
+
+  function renderInventorySnList() {
+    var el = document.getElementById('ii-sn-list');
+    if (!inventorySnItems.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div style="background:white;border-radius:8px;padding:10px;margin-bottom:4px">' +
+      '<div style="font-size:12px;color:#666;margin-bottom:6px">已加入 ' + inventorySnItems.length + ' 個 S/N：</div>' +
+      inventorySnItems.map(function (item, i) {
+        return '<div style="display:flex;align-items:center;gap:6px;margin:4px 0">' +
+          '<span style="font-size:13px;flex:1">' + esc(item.sn) + '</span>' +
+          '<button onclick="inventorySnItems.splice(' + i + ',1);renderInventorySnList()" style="background:none;border:none;color:#d93025;font-size:16px;cursor:pointer">×</button>' +
+          '</div>';
+      }).join('') +
+      '<button onclick="inventorySnItems=[];renderInventorySnList()" style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;margin-top:4px">全部清除</button>' +
+      '</div>';
   }
 
   function closeOcr() {
