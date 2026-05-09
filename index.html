@@ -469,16 +469,59 @@
 
   function removeScanned(index) { scannedItems.splice(index, 1); updateScannedUI(); }
 
+  function editScanned(i) {
+    var chip = document.getElementById('chip-' + i);
+    if (!chip) return;
+    chip.style.flexWrap = 'nowrap';
+    chip.innerHTML =
+      '<input id="esn-' + i + '" type="text" value="' + esc(scannedItems[i].barcode) + '" style="flex:1;min-width:0;padding:7px;border:2px solid #1a73e8;border-radius:6px;font-size:13px">' +
+      '<div style="display:flex;gap:4px;margin-left:6px;flex-shrink:0">' +
+        '<button onclick="saveScanned(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600">✓</button>' +
+        '<button onclick="updateScannedUI()" style="background:#757575;color:white;border:none;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px">✗</button>' +
+      '</div>';
+    var inp = document.getElementById('esn-' + i);
+    inp.focus(); inp.select();
+  }
+
+  function saveScanned(i) {
+    var inp = document.getElementById('esn-' + i);
+    if (inp && inp.value.trim()) scannedItems[i].barcode = inp.value.trim();
+    updateScannedUI();
+  }
+
+  function addScannedManual() {
+    var inp = document.getElementById('add-sn-manual');
+    if (!inp) return;
+    var sn = inp.value.trim();
+    if (!sn) return;
+    if (scannedItems.some(function(x) { return x.barcode === sn; })) { alert('已存在：' + sn); inp.select(); return; }
+    scannedItems.push({ barcode: sn, model: '' });
+    updateScannedUI();
+    var ni = document.getElementById('add-sn-manual');
+    if (ni) ni.focus();
+  }
+
   function updateScannedUI() {
     var count = scannedItems.length;
     document.getElementById('scan-count').textContent = count > 0 ? '已掃 ' + count + ' 個' : '';
     document.getElementById('btn-done').style.display = count > 0 ? 'block' : 'none';
-    document.getElementById('scanned-list').innerHTML = scannedItems.map(function (item, i) {
-      return '<div class="chip"><div class="chip-info">' +
-        '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
-        (item.model ? '<div class="chip-model">P/N: ' + esc(item.model) + '</div>' : '<div class="chip-model" style="color:#e37400">等待 P/N...</div>') +
-        '</div><button class="chip-del" onclick="removeScanned(' + i + ')">×</button></div>';
+    var html = scannedItems.map(function (item, i) {
+      return '<div class="chip" id="chip-' + i + '">' +
+        '<div class="chip-info">' +
+          '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
+          (item.model ? '<div class="chip-model">P/N: ' + esc(item.model) + '</div>' : '<div class="chip-model" style="color:#e37400">等待 P/N...</div>') +
+        '</div>' +
+        '<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">' +
+          '<button onclick="editScanned(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">編輯</button>' +
+          '<button class="chip-del" onclick="removeScanned(' + i + ')">×</button>' +
+        '</div>' +
+      '</div>';
     }).join('');
+    html += '<div style="display:flex;gap:6px;margin-top:6px">' +
+      '<input id="add-sn-manual" type="text" placeholder="手動輸入 S/N" style="flex:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:14px" onkeydown="if(event.key===\'Enter\')addScannedManual()">' +
+      '<button onclick="addScannedManual()" style="background:#0f9d58;color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:18px;font-weight:600">＋</button>' +
+    '</div>';
+    document.getElementById('scanned-list').innerHTML = html;
   }
 
   // ── Batch form ───────────────────────────────────────────────────
