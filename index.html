@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GBIC 追蹤系統</title>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; color: #333; }
@@ -197,10 +198,60 @@
   }
 
   function startScan() {
-    var video  = document.getElementById('scanner-video');
-    var canvas = document.getElementById('scanner-canvas');
-    var ctx    = canvas.getContext('2d');
+    var video = document.getElementById('scanner-video');
 
+    // Try BarcodeDetector first (Chrome native, supports Code128/EAN/QR/etc.)
+    if (typeof BarcodeDetector !== 'undefined') {
+      var detector = new BarcodeDetector({ formats: [
+        'code_128','code_39','code_93','ean_13','ean_8',
+        'upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
+      ]});
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(function (stream) {
+          scanStream = stream;
+          video.srcObject = stream;
+          video.play();
+          scanTimer = setInterval(function () {
+            detector.detect(video).then(function (codes) {
+              if (codes.length > 0) onBarcodeFound(codes[0].rawValue);
+            }).catch(function () {});
+          }, 300);
+        })
+        .catch(function () {
+          stopScan();
+          document.getElementById('f-barcode').value = '';
+          showPage('pg-form');
+        });
+      return;
+    }
+
+    // Fallback: ZXing (supports Code128, EAN, QR, etc.)
+    if (typeof ZXing !== 'undefined') {
+      var hints = new Map();
+      hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+        ZXing.BarcodeFormat.CODE_128,
+        ZXing.BarcodeFormat.CODE_39,
+        ZXing.BarcodeFormat.EAN_13,
+        ZXing.BarcodeFormat.EAN_8,
+        ZXing.BarcodeFormat.UPC_A,
+        ZXing.BarcodeFormat.QR_CODE,
+        ZXing.BarcodeFormat.DATA_MATRIX
+      ]);
+      var reader = new ZXing.BrowserMultiFormatReader(hints);
+      reader.decodeFromVideoDevice(null, 'scanner-video', function (result, err) {
+        if (result) {
+          reader.reset();
+          onBarcodeFound(result.getText());
+        }
+      });
+      // Store reader for cleanup
+      scanStream = { zxingReader: reader, getTracks: function(){ return []; } };
+      return;
+    }
+
+    // Last resort: jsQR (QR code only)
+    var canvas = document.getElementById('scanner-canvas');
+    var ctx = canvas.getContext('2d');
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then(function (stream) {
         scanStream = stream;
@@ -212,10 +263,8 @@
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
           var img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-          if (code && code.data) {
-            onBarcodeFound(code.data);
-          }
+          var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+          if (code && code.data) onBarcodeFound(code.data);
         }, 300);
       })
       .catch(function () {
@@ -227,7 +276,14 @@
 
   function stopScan() {
     if (scanTimer)  { clearInterval(scanTimer); scanTimer = null; }
-    if (scanStream) { scanStream.getTracks().forEach(function (t) { t.stop(); }); scanStream = null; }
+    if (scanStream) {
+      if (scanStream.zxingReader) {
+        scanStream.zxingReader.reset();
+      } else {
+        scanStream.getTracks().forEach(function (t) { t.stop(); });
+      }
+      scanStream = null;
+    }
   }
 
   function onBarcodeFound(barcode) {
