@@ -243,6 +243,11 @@
   <button class="btn" onclick="adminQueryBarcode()">查詢</button>
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
   <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">庫存入庫紀錄</label>
+  <button class="btn btn-orange" onclick="adminQueryIn()">查詢所有入庫紀錄</button>
+  <div id="res-in" style="overflow-x:auto;margin-top:8px"></div>
+
+  <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">領貨出庫紀錄</label>
   <button class="btn btn-purple" onclick="adminQueryOut()">查詢所有出庫紀錄</button>
   <div id="res-out" style="overflow-x:auto;margin-top:8px"></div>
@@ -630,6 +635,29 @@
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  function adminQueryIn() {
+    callApi({ action: 'queryInventoryIn' }).then(function (data) {
+      var el = document.getElementById('res-in');
+      if (!data.length) { el.innerHTML = '<p class="no-data">尚無入庫紀錄</p>'; return; }
+      el.innerHTML = '<table>' +
+        '<tr><th>日期</th><th>型號</th><th>數量</th><th>簽收人</th><th>S/N</th><th>P/N</th><th></th></tr>' +
+        data.map(function (r) {
+          var row = r._row; var sheet = r._sheet;
+          return '<tr>' +
+            '<td>' + esc(fmtDate(r.date)) + '</td>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td>' + esc(r.quantity) + '</td>' +
+            '<td>' + esc(r.signee) + '</td>' +
+            '<td>' + (r.sn ? esc(r.sn) : '—') + '</td>' +
+            '<td>' + (r.pn ? esc(r.pn) : '—') + '</td>' +
+            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryIn)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td>' +
+            '</tr>';
+        }).join('') + '</table>';
+    }).catch(function () {
+      document.getElementById('res-in').innerHTML = '<p class="no-data">查詢失敗</p>';
+    });
   }
 
   function adminQueryOut() {
