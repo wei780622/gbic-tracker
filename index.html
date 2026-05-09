@@ -703,29 +703,79 @@
     document.getElementById('ocr-file').click();
   }
 
-  function preprocessImage(file) {
+  // 把 File 轉成原始尺寸 Canvas（條碼偵測用）
+  function fileToCanvas(file) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function() {
+        var c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        c.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(c);
+      };
+      img.onerror = function() { URL.revokeObjectURL(url); reject(); };
+      img.src = url;
+    });
+  }
+
+  // 從 Canvas 偵測條碼，回傳字串陣列
+  async function detectBarcodes(canvas) {
+    var results = [];
+
+    // 優先用 BarcodeDetector（Chrome/Edge 原生，最快最準）
+    if (typeof BarcodeDetector !== 'undefined') {
+      try {
+        var det = new BarcodeDetector();
+        var hits = await det.detect(canvas);
+        hits.forEach(function(h) { if (h.rawValue) results.push(h.rawValue); });
+        if (results.length) return results;
+      } catch(e) {}
+    }
+
+    // Fallback: ZXing（支援 Code128 / QR / DataMatrix）
+    try {
+      var reader = new ZXing.BrowserMultiFormatReader();
+      var r = await reader.decodeFromCanvas(canvas);
+      if (r && r.getText()) results.push(r.getText());
+    } catch(e) {}
+
+    return results;
+  }
+
+  // 圖片前處理（Otsu 二值化）供 Tesseract fallback 使用
+  function preprocessForOcr(file) {
     return new Promise(function(resolve) {
       var img = new Image();
       var url = URL.createObjectURL(file);
       img.onload = function() {
-        // Scale: Tesseract works best around 1200-2400px
         var largest = Math.max(img.width, img.height);
-        var scale = 1;
-        if (largest < 1200) scale = 1200 / largest;
-        if (largest * scale > 2400) scale = 2400 / largest;
-        var w = Math.round(img.width * scale);
-        var h = Math.round(img.height * scale);
+        var scale = largest < 1500 ? 1500 / largest : largest > 3000 ? 3000 / largest : 1;
+        var w = Math.round(img.width * scale), h = Math.round(img.height * scale);
         var canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         var ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
-        // Grayscale + strong contrast boost
-        var id = ctx.getImageData(0, 0, w, h);
-        var d = id.data;
-        for (var i = 0; i < d.length; i += 4) {
-          var g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
-          g = Math.min(255, Math.max(0, (g - 128) * 2.0 + 128));
-          d[i] = d[i+1] = d[i+2] = g;
+        var id = ctx.getImageData(0, 0, w, h), d = id.data, n = w * h;
+        var grays = new Uint8Array(n);
+        for (var i = 0; i < n; i++)
+          grays[i] = Math.round(0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2]);
+        // Otsu threshold
+        var hist = new Array(256).fill(0);
+        for (var i = 0; i < n; i++) hist[grays[i]]++;
+        var sum = 0; for (var t = 0; t < 256; t++) sum += t * hist[t];
+        var sumB = 0, wB = 0, maxVar = 0, thr = 128;
+        for (var t = 0; t < 256; t++) {
+          wB += hist[t]; if (!wB) continue;
+          var wF = n - wB; if (!wF) break;
+          sumB += t * hist[t];
+          var mB = sumB/wB, mF = (sum-sumB)/wF, v = wB*wF*(mB-mF)*(mB-mF);
+          if (v > maxVar) { maxVar = v; thr = t; }
+        }
+        for (var i = 0; i < n; i++) {
+          var g = grays[i] < thr ? 0 : 255;
+          d[i*4] = d[i*4+1] = d[i*4+2] = g;
         }
         ctx.putImageData(id, 0, 0);
         URL.revokeObjectURL(url);
@@ -745,84 +795,77 @@
     document.getElementById('ocr-confirm').style.display = 'none';
     document.getElementById('ocr-modal').classList.add('open');
 
-    var total = files.length;
-    var done = 0;
-    var seen = {};
+    var total = files.length, done = 0, seen = {};
 
-    function updateStatus() {
-      document.getElementById('ocr-status').textContent =
-        done < total
-          ? ('辨識中… ' + done + ' / ' + total + ' 張')
-          : ('全部完成，共找到 ' + ocrResults.length + ' 個 S/N');
+    function updateStatus(msg) {
+      document.getElementById('ocr-status').textContent = msg ||
+        (done < total ? ('掃描中… ' + done + ' / ' + total + ' 張') : ('完成，共找到 ' + ocrResults.length + ' 個條碼'));
       document.getElementById('ocr-bar').style.width = Math.round((done / total) * 100) + '%';
     }
-
     updateStatus();
 
     for (var fi = 0; fi < files.length; fi++) {
       try {
-        var canvas = await preprocessImage(files[fi]);
-        var fidx = fi;
-        var result = await Tesseract.recognize(canvas, 'eng', {
-          logger: function(m) {
-            if (m.status === 'recognizing text') {
-              document.getElementById('ocr-bar').style.width =
-                Math.round((fidx + m.progress) / total * 100) + '%';
-            }
-          },
-          tessedit_pageseg_mode: '11',
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-/',
-        });
-        extractSN(result.data.text).forEach(function(sn) {
-          if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
-        });
-      } catch(e) { /* 略過這張，繼續下一張 */ }
+        // ── 第一步：條碼偵測（最準）──────────────────────
+        var canvas = await fileToCanvas(files[fi]);
+        var barcodes = await detectBarcodes(canvas);
+        var gotSN = false;
+
+        if (barcodes.length) {
+          barcodes.forEach(function(val) {
+            var clean = val.trim().toUpperCase().replace(/[^A-Z0-9\-\/]/g, '');
+            if (clean.length >= 4 && !seen[clean]) { seen[clean] = true; ocrResults.push(clean); gotSN = true; }
+          });
+        }
+
+        // ── 第二步：若條碼未找到，退回 Tesseract OCR ─────
+        if (!gotSN) {
+          updateStatus('第 ' + (fi+1) + ' 張：未偵測到條碼，改用文字辨識…');
+          var fidx = fi;
+          var pp = await preprocessForOcr(files[fi]);
+          var result = await Tesseract.recognize(pp, 'eng', {
+            logger: function(m) {
+              if (m.status === 'recognizing text')
+                document.getElementById('ocr-bar').style.width =
+                  Math.round((fidx + m.progress) / total * 100) + '%';
+            },
+            tessedit_pageseg_mode: '11',
+          });
+          extractSN(result.data.text).forEach(function(sn) {
+            if (!seen[sn]) { seen[sn] = true; ocrResults.push(sn); }
+          });
+        }
+      } catch(e) {}
       done++;
       updateStatus();
       renderOcrList();
       document.getElementById('ocr-confirm').style.display = 'block';
     }
 
-    if (done === total && ocrResults.length === 0) {
-      document.getElementById('ocr-status').textContent = '未找到 S/N，請手動輸入或重拍更清晰的照片';
-    }
+    if (ocrResults.length === 0)
+      updateStatus('未找到任何條碼或 S/N，請手動輸入');
   }
 
   function extractSN(rawText) {
     var text = rawText.replace(/\r/g, '\n');
-    var found = [];
-    var seen = {};
-
+    var found = [], seen = {};
     function add(val) {
-      // Strip non-alphanumeric/dash, uppercase
       val = val.replace(/[^A-Za-z0-9\-]/g, '').toUpperCase();
-      if (val.length < 4) return;
-      if (!seen[val]) { seen[val] = true; found.push(val); }
+      if (val.length < 4 || seen[val]) return;
+      seen[val] = true; found.push(val);
     }
-
     var m;
-
-    // Pattern 1: S/N / SN / S-N / S.N label
     var p1 = /S[\s\/\.\-]?N\s*[:\-=]?\s*([A-Za-z0-9][A-Za-z0-9\-]{3,30})/gi;
     while ((m = p1.exec(text)) !== null) add(m[1]);
-
-    // Pattern 2: Serial / Serial No / Serial Number
     var p2 = /[Ss]erial\s*(?:[Nn](?:o\.?|umber)?)?\s*[:\-=]?\s*([A-Za-z0-9][A-Za-z0-9\-]{3,30})/gi;
     while ((m = p2.exec(text)) !== null) add(m[1]);
-
-    // Pattern 3: MT prefix (Mellanox/common GBIC format)
     var p3 = /\bMT[A-Za-z0-9\-]{3,}/gi;
     while ((m = p3.exec(text)) !== null) add(m[0]);
-
-    // Pattern 4: standalone long alphanumeric (2-4 letters + 4+ digits) – fallback
-    if (found.length === 0) {
-      var upper = text.toUpperCase();
+    if (!found.length) {
       var p4 = /\b[A-Z]{1,4}[0-9]{4,}[A-Z0-9]{0,12}\b/g;
-      while ((m = p4.exec(upper)) !== null) {
+      while ((m = p4.exec(text.toUpperCase())) !== null)
         if (m[0].length >= 6) add(m[0]);
-      }
     }
-
     return found;
   }
 
