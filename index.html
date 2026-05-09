@@ -843,7 +843,10 @@
         if (barcodes.length) {
           barcodes.forEach(function(val) {
             var clean = val.trim().toUpperCase().replace(/[^A-Z0-9\-\/]/g, '');
-            if (clean.length >= 4 && !seen[clean]) { seen[clean] = true; ocrResults.push(clean); gotSN = true; }
+            // 只保留 S/N：MT 開頭，或 2-4 英文 + 6 位以上數字/英數（排除 P/N、Carton ID 等）
+            var isSN = /^MT[A-Z0-9]{4,}/i.test(clean) ||
+                       /^[A-Z]{2,4}[0-9]{6,}[A-Z0-9]*$/.test(clean);
+            if (isSN && !seen[clean]) { seen[clean] = true; ocrResults.push(clean); gotSN = true; }
           });
         }
 
