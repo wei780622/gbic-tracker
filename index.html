@@ -1266,7 +1266,7 @@
     var el = document.getElementById('res-summary');
     el.innerHTML = '<p class="no-data">查詢中…</p>';
     callApi({ action: 'queryInventorySummary' }).then(function(data) {
-      if (!data || data.error) { el.innerHTML = '<p class="no-data">查詢失敗：' + JSON.stringify(data) + '</p>'; return; }
+      if (!data || data.error) { el.innerHTML = '<p class="no-data">查詢失敗</p>'; return; }
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
@@ -1278,7 +1278,7 @@
         }).join('') +
         '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td><b>' + total + '</b></td></tr>' +
         '</table>';
-    }).catch(function(err) { el.innerHTML = '<p class="no-data">Catch：' + String(err) + '</p>'; });
+    }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
 
   // ── snInfoBadge（掃描時查入庫來源/重複警告）─────────────────────
