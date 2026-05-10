@@ -276,6 +276,9 @@
 <!-- Page: Admin -->
 <div id="pg-admin" class="page">
   <h2>查詢 / 匯出</h2>
+  <button class="btn btn-green" onclick="adminQuerySummary()">📊 庫存總覽</button>
+  <div id="res-summary" style="overflow-x:auto;margin-top:8px"></div>
+  <hr>
   <div class="form-group">
     <label>依機櫃查詢目前上架設備</label>
     <select id="a-rack"><option value="">-- 選擇機櫃 --</option></select>
@@ -450,9 +453,14 @@
       }
       scanCooldown = true;
       if (navigator.vibrate) navigator.vibrate(80);
-      scannedItems.push({ barcode: barcode, model: '' });
+      var newItem = { barcode: barcode, model: '' };
+      scannedItems.push(newItem);
       updateScannedUI();
       setTimeout(function () { scanCooldown = false; }, 800);
+      callApi({ action: 'checkSNInfo', sn: barcode }).then(function(info) {
+        newItem.snInfo = info;
+        updateScannedUI();
+      }).catch(function() { newItem.snInfo = null; updateScannedUI(); });
     } else {
       var target = null;
       for (var i = scannedItems.length - 1; i >= 0; i--) {
@@ -485,7 +493,13 @@
 
   function saveScanned(i) {
     var inp = document.getElementById('esn-' + i);
-    if (inp && inp.value.trim()) scannedItems[i].barcode = inp.value.trim();
+    if (inp && inp.value.trim()) {
+      scannedItems[i].barcode = inp.value.trim();
+      delete scannedItems[i].snInfo; // trigger re-check
+      callApi({ action: 'checkSNInfo', sn: scannedItems[i].barcode }).then(function(info) {
+        scannedItems[i].snInfo = info; updateScannedUI();
+      }).catch(function() { scannedItems[i].snInfo = null; updateScannedUI(); });
+    }
     updateScannedUI();
   }
 
@@ -495,8 +509,12 @@
     var sn = inp.value.trim();
     if (!sn) return;
     if (scannedItems.some(function(x) { return x.barcode === sn; })) { alert('已存在：' + sn); inp.select(); return; }
-    scannedItems.push({ barcode: sn, model: '' });
+    var mItem = { barcode: sn, model: '' };
+    scannedItems.push(mItem);
     updateScannedUI();
+    callApi({ action: 'checkSNInfo', sn: sn }).then(function(info) {
+      mItem.snInfo = info; updateScannedUI();
+    }).catch(function() { mItem.snInfo = null; updateScannedUI(); });
     var ni = document.getElementById('add-sn-manual');
     if (ni) ni.focus();
   }
@@ -510,6 +528,7 @@
         '<div class="chip-info">' +
           '<div class="chip-barcode">' + esc(item.barcode) + '</div>' +
           (item.model ? '<div class="chip-model">P/N: ' + esc(item.model) + '</div>' : '<div class="chip-model" style="color:#e37400">等待 P/N...</div>') +
+          snInfoBadge(item) +
         '</div>' +
         '<div style="display:flex;gap:4px;align-items:center;flex-shrink:0">' +
           '<button onclick="editScanned(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px">編輯</button>' +
@@ -644,17 +663,34 @@
       items = inventorySnItems.slice();
     }
 
-    callApi({ action: 'recordInventoryIn', date: date, model: model, quantity: qty, signee: signee, items: items })
-      .then(function (data) {
-        if (data.success) {
-          okEl.textContent = '✅ 入庫成功（' + (items.length || 1) + ' 筆）';
-          document.getElementById('ii-file').value = '';
-          document.getElementById('ii-file-label').textContent = '📄 或上傳 CSV / Excel（.csv / .xlsx / .xls）';
-          document.getElementById('ii-col-map').style.display = 'none';
-          fileRows = []; fileHeaders = [];
-          inventorySnItems = []; renderInventorySnList();
-        } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
-      }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+    var snsToCheck = items.filter(function(it) { return it.sn; }).map(function(it) { return it.sn; });
+    function doSubmit() {
+      callApi({ action: 'recordInventoryIn', date: date, model: model, quantity: qty, signee: signee, items: items })
+        .then(function (data) {
+          if (data.success) {
+            okEl.textContent = '✅ 入庫成功（' + (items.length || 1) + ' 筆）';
+            document.getElementById('ii-file').value = '';
+            document.getElementById('ii-file-label').textContent = '📄 或上傳 CSV / Excel（.csv / .xlsx / .xls）';
+            document.getElementById('ii-col-map').style.display = 'none';
+            fileRows = []; fileHeaders = [];
+            inventorySnItems = []; renderInventorySnList();
+          } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
+        }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+    }
+    if (snsToCheck.length > 0) {
+      errEl.textContent = '⚠ 檢查重複 S/N 中…';
+      callApi({ action: 'checkSNsBatch', sns: snsToCheck }).then(function(results) {
+        errEl.textContent = '';
+        var dups = results.filter(function(r) { return r.inRecord; });
+        if (dups.length > 0) {
+          var msg = '以下 ' + dups.length + ' 個 S/N 已在入庫紀錄中：\n' + dups.map(function(r) { return r.sn; }).join('\n') + '\n\n確定繼續送出？';
+          if (!confirm(msg)) return;
+        }
+        doSubmit();
+      }).catch(function() { doSubmit(); });
+    } else {
+      doSubmit();
+    }
   }
 
   // ── 領貨出庫 ─────────────────────────────────────────────────────
@@ -1003,8 +1039,12 @@
       var added = 0;
       vals.forEach(function (val) {
         if (!scannedItems.some(function (i) { return i.barcode === val; })) {
-          scannedItems.push({ barcode: val, model: '' });
+          var oItem = { barcode: val, model: '' };
+          scannedItems.push(oItem);
           added++;
+          callApi({ action: 'checkSNInfo', sn: val }).then(function(info) {
+            oItem.snInfo = info; updateScannedUI();
+          }).catch(function() { oItem.snInfo = null; updateScannedUI(); });
         }
       });
       updateScannedUI();
@@ -1219,6 +1259,44 @@
     }).catch(function () {
       document.getElementById('res-out').innerHTML = '<p class="no-data">查詢失敗</p>';
     });
+  }
+
+  // ── 庫存總覽 ─────────────────────────────────────────────────────
+  function adminQuerySummary() {
+    var el = document.getElementById('res-summary');
+    el.innerHTML = '<p class="no-data">查詢中…</p>';
+    callApi({ action: 'queryInventorySummary' }).then(function(data) {
+      if (!data || data.error) { el.innerHTML = '<p class="no-data">查詢失敗</p>'; return; }
+      if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
+      var total = data.reduce(function(s, r) { return s + r.current; }, 0);
+      el.innerHTML = '<table>' +
+        '<tr><th>型號</th><th>入庫</th><th>出庫</th><th>現有庫存</th></tr>' +
+        data.map(function(r) {
+          var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
+          return '<tr><td>' + esc(r.model) + '</td><td>' + r.totalIn + '</td><td>' + r.totalOut + '</td>' +
+            '<td style="' + style + '">' + r.current + '</td></tr>';
+        }).join('') +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td><b>' + total + '</b></td></tr>' +
+        '</table>';
+    }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  // ── snInfoBadge（掃描時查入庫來源/重複警告）─────────────────────
+  function snInfoBadge(item) {
+    if (!('snInfo' in item)) {
+      return '<div class="chip-model" style="color:#aaa;font-size:11px">🔍 查詢中…</div>';
+    }
+    var info = item.snInfo;
+    if (!info) return '';
+    if (info.rackRecord && info.rackRecord.type === '上架') {
+      return '<div class="chip-model" style="color:#d93025;font-size:11px">⚠ 已上架 Rack ' + esc(info.rackRecord.rack) + '</div>';
+    }
+    if (info.inRecord) {
+      var ds = '';
+      try { var d = new Date(info.inRecord.date); ds = d.getFullYear() + '年' + (d.getMonth()+1) + '月 '; } catch(e) {}
+      return '<div class="chip-model" style="color:#0f9d58;font-size:11px">✓ 入庫 ' + ds + esc(info.inRecord.model) + '</div>';
+    }
+    return '<div class="chip-model" style="color:#e37400;font-size:11px">⚠ 未在入庫紀錄</div>';
   }
 
   function exportCSV() {
