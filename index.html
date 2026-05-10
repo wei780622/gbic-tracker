@@ -675,20 +675,11 @@
     errEl.textContent = '⚠ 比對入庫紀錄中…';
     callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
       errEl.textContent = '';
-      var dupSet = {};
-      results.filter(function(r) { return r.inRecord; }).forEach(function(r) { dupSet[r.sn] = true; });
-      var clean = toAdd.filter(function(item) { return !dupSet[item.sn]; });
-      var dupCount = toAdd.length - clean.length;
-      clean.forEach(function(item) { inventorySnItems.push(item); });
-      renderInventorySnList();
-      var msg = '已匯入 ' + clean.length + ' 筆';
-      if (dupCount > 0) msg += '，已自動移除 ' + dupCount + ' 筆重複（已在入庫紀錄）';
-      alert(msg);
+      showDupResult(results, toAdd);
     }).catch(function() {
       toAdd.forEach(function(item) { inventorySnItems.push(item); });
       renderInventorySnList();
       errEl.textContent = '';
-      alert('已匯入 ' + toAdd.length + ' 筆（重複比對暫時失敗，請手動確認）');
     });
   }
 
@@ -1120,18 +1111,33 @@
     errEl.textContent = '⚠ 比對入庫紀錄中…';
     callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
       errEl.textContent = '';
-      var dupSet = {};
-      results.filter(function(r) { return r.inRecord; }).forEach(function(r) { dupSet[r.sn] = true; });
-      var clean = toAdd.filter(function(item) { return !dupSet[item.sn]; });
-      var dupCount = toAdd.length - clean.length;
-      clean.forEach(function(item) { inventorySnItems.push(item); });
-      renderInventorySnList();
-      if (dupCount > 0) alert('已自動移除 ' + dupCount + ' 筆重複（已在入庫紀錄）');
+      showDupResult(results, toAdd);
     }).catch(function() {
       toAdd.forEach(function(item) { inventorySnItems.push(item); });
       renderInventorySnList();
       errEl.textContent = '';
     });
+  }
+
+  function showDupResult(results, toAdd) {
+    var dups = results.filter(function(r) { return r.inRecord; });
+    var dupSet = {};
+    dups.forEach(function(r) { dupSet[r.sn] = r.inRecord; });
+    var clean = toAdd.filter(function(item) { return !dupSet[item.sn]; });
+    clean.forEach(function(item) { inventorySnItems.push(item); });
+    renderInventorySnList();
+    var okEl = document.getElementById('ii-ok');
+    if (dups.length > 0) {
+      var lines = dups.map(function(r) {
+        var d = r.inRecord.date ? new Date(r.inRecord.date) : null;
+        var ds = d ? (d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日') : '日期不明';
+        return '<div style="font-size:12px;color:#d93025;margin:2px 0">⚠ ' + esc(r.sn) + ' — ' + ds + ' 入庫（' + esc(r.inRecord.model) + '）</div>';
+      }).join('');
+      okEl.innerHTML = '<div style="color:#0f9d58;font-size:13px;margin-bottom:4px">✅ 已加入 ' + clean.length + ' 筆</div>' +
+        '<div style="font-size:13px;color:#d93025;margin-bottom:4px">已移除 ' + dups.length + ' 筆重複：</div>' + lines;
+    } else {
+      okEl.textContent = '✅ 已加入 ' + clean.length + ' 筆，無重複';
+    }
   }
 
   function renderInventorySnList() {
