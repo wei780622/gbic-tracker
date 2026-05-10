@@ -663,29 +663,24 @@
   }
 
   function importAllCells() {
-    var allRows = fileRows.length ? fileRows : [];
-    // Also include header row (row 0) since no real header in grid format
-    var wb = window._lastWb;
-    var toAdd = [];
-    var seen = {};
-    // Collect from all rows including the "header" row
     var allData = window._lastAllData || [];
+    var toAdd = [], seen = {}, fileDups = [];
     allData.forEach(function(row) {
       row.forEach(function(cell) {
         var sn = String(cell || '').replace(/\s+/g, '').trim();
         if (sn.length < 4) return;
-        if (seen[sn]) return;
-        if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
+        if (seen[sn]) { if (!fileDups.includes(sn)) fileDups.push(sn); return; }
         seen[sn] = true;
+        if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
         toAdd.push({ sn: sn, pn: '' });
       });
     });
-    if (!toAdd.length) { alert('沒有可匯入的 S/N'); return; }
+    if (!toAdd.length && !fileDups.length) { alert('沒有可匯入的 S/N'); return; }
     var errEl = document.getElementById('ii-err');
     errEl.textContent = '⚠ 比對入庫紀錄中（共 ' + toAdd.length + ' 筆）…';
     callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
       errEl.textContent = '';
-      showDupResult(results, toAdd);
+      showDupResult(results, toAdd, fileDups);
     }).catch(function() {
       toAdd.forEach(function(item) { inventorySnItems.push(item); });
       renderInventorySnList();
@@ -1155,7 +1150,8 @@
     });
   }
 
-  function showDupResult(results, toAdd) {
+  function showDupResult(results, toAdd, fileDups) {
+    fileDups = fileDups || [];
     var dups = results.filter(function(r) { return r.inRecord; });
     var dupSet = {};
     dups.forEach(function(r) { dupSet[r.sn] = r.inRecord; });
@@ -1163,17 +1159,23 @@
     clean.forEach(function(item) { inventorySnItems.push(item); });
     renderInventorySnList();
     var okEl = document.getElementById('ii-ok');
-    if (dups.length > 0) {
-      var lines = dups.map(function(r) {
-        var d = r.inRecord.date ? new Date(r.inRecord.date) : null;
-        var ds = d ? (d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日') : '日期不明';
-        return '<div style="font-size:12px;color:#d93025;margin:2px 0">⚠ ' + esc(r.sn) + ' — ' + ds + ' 入庫（' + esc(r.inRecord.model) + '）</div>';
-      }).join('');
-      okEl.innerHTML = '<div style="color:#0f9d58;font-size:13px;margin-bottom:4px">✅ 已加入 ' + clean.length + ' 筆</div>' +
-        '<div style="font-size:13px;color:#d93025;margin-bottom:4px">已移除 ' + dups.length + ' 筆重複：</div>' + lines;
-    } else {
-      okEl.textContent = '✅ 已加入 ' + clean.length + ' 筆，無重複';
+    var html = '<div style="color:#0f9d58;font-size:13px;margin-bottom:6px">✅ 已加入 ' + clean.length + ' 筆</div>';
+    if (fileDups.length > 0) {
+      html += '<div style="font-size:13px;color:#e37400;margin-bottom:4px">⚠ 檔案內重複（只保留一筆）：</div>' +
+        fileDups.map(function(sn) {
+          return '<div style="font-size:12px;color:#e37400;margin:2px 0">　' + esc(sn) + '</div>';
+        }).join('');
     }
+    if (dups.length > 0) {
+      html += '<div style="font-size:13px;color:#d93025;margin:6px 0 4px">🚫 已在入庫紀錄（自動移除）：</div>' +
+        dups.map(function(r) {
+          var d = r.inRecord.date ? new Date(r.inRecord.date) : null;
+          var ds = d ? (d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日') : '日期不明';
+          return '<div style="font-size:12px;color:#d93025;margin:2px 0">　' + esc(r.sn) + ' — ' + ds + '（' + esc(r.inRecord.model) + '）</div>';
+        }).join('');
+    }
+    if (!fileDups.length && !dups.length) html += '<div style="font-size:12px;color:#888">無重複</div>';
+    okEl.innerHTML = html;
   }
 
   function renderInventorySnList() {
