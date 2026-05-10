@@ -661,17 +661,35 @@
     if (!fileRows.length) { alert('請先上傳 CSV / Excel'); return; }
     var snIdx = parseInt(document.getElementById('ii-sn-col').value);
     var pnIdx = parseInt(document.getElementById('ii-pn-col').value);
-    var added = 0;
+    var toAdd = [];
     fileRows.forEach(function(r) {
       var sn = snIdx >= 0 ? String(r[snIdx] || '').trim() : '';
       var pn = pnIdx >= 0 ? String(r[pnIdx] || '').trim() : '';
       if (!sn) return;
       if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
-      inventorySnItems.push({ sn: sn, pn: pn });
-      added++;
+      if (toAdd.some(function(i) { return i.sn === sn; })) return;
+      toAdd.push({ sn: sn, pn: pn });
     });
-    renderInventorySnList();
-    alert('已匯入 ' + added + ' 筆 S/N 到清單');
+    if (!toAdd.length) { alert('沒有新的 S/N 可匯入'); return; }
+    var errEl = document.getElementById('ii-err');
+    errEl.textContent = '⚠ 比對入庫紀錄中…';
+    callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
+      errEl.textContent = '';
+      var dupSet = {};
+      results.filter(function(r) { return r.inRecord; }).forEach(function(r) { dupSet[r.sn] = true; });
+      var clean = toAdd.filter(function(item) { return !dupSet[item.sn]; });
+      var dupCount = toAdd.length - clean.length;
+      clean.forEach(function(item) { inventorySnItems.push(item); });
+      renderInventorySnList();
+      var msg = '已匯入 ' + clean.length + ' 筆';
+      if (dupCount > 0) msg += '，已自動移除 ' + dupCount + ' 筆重複（已在入庫紀錄）';
+      alert(msg);
+    }).catch(function() {
+      toAdd.forEach(function(item) { inventorySnItems.push(item); });
+      renderInventorySnList();
+      errEl.textContent = '';
+      alert('已匯入 ' + toAdd.length + ' 筆（重複比對暫時失敗，請手動確認）');
+    });
   }
 
   function submitInventoryIn() {
@@ -1088,18 +1106,32 @@
   function parsePasteSN() {
     var ta = document.getElementById('ii-sn-paste');
     if (!ta) return;
-    var lines = ta.value.split(/[\s,，]+/);
-    var added = 0;
-    lines.forEach(function(line) {
+    var toAdd = [];
+    ta.value.split(/[\s,，]+/).forEach(function(line) {
       var sn = line.trim().replace(/[^A-Za-z0-9\-]/g, '');
       if (sn.length < 4) return;
       if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
-      inventorySnItems.push({ sn: sn, pn: '' });
-      added++;
+      if (toAdd.some(function(i) { return i.sn === sn; })) return;
+      toAdd.push({ sn: sn, pn: '' });
     });
+    if (!toAdd.length) { alert('沒有新的 S/N 可加入'); return; }
     ta.value = '';
-    renderInventorySnList();
-    if (added === 0) alert('沒有新的 S/N 可加入（空白或重複）');
+    var errEl = document.getElementById('ii-err');
+    errEl.textContent = '⚠ 比對入庫紀錄中…';
+    callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
+      errEl.textContent = '';
+      var dupSet = {};
+      results.filter(function(r) { return r.inRecord; }).forEach(function(r) { dupSet[r.sn] = true; });
+      var clean = toAdd.filter(function(item) { return !dupSet[item.sn]; });
+      var dupCount = toAdd.length - clean.length;
+      clean.forEach(function(item) { inventorySnItems.push(item); });
+      renderInventorySnList();
+      if (dupCount > 0) alert('已自動移除 ' + dupCount + ' 筆重複（已在入庫紀錄）');
+    }).catch(function() {
+      toAdd.forEach(function(item) { inventorySnItems.push(item); });
+      renderInventorySnList();
+      errEl.textContent = '';
+    });
   }
 
   function renderInventorySnList() {
