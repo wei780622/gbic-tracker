@@ -233,7 +233,10 @@
       </div>
     </div>
     <p class="hint" id="ii-row-count"></p>
-    <button onclick="importFileToSnList()" style="width:100%;background:#1a73e8;color:white;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;margin-bottom:8px">→ 匯入 S/N 到上方清單（可逐筆刪除）</button>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="importFileToSnList()" style="flex:1;background:#1a73e8;color:white;border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer">→ 依欄位匯入 S/N</button>
+      <button onclick="importAllCells()" style="flex:1;background:#7b2ff7;color:white;border:none;border-radius:8px;padding:10px;font-size:13px;cursor:pointer">📥 全格匯入（每格一個 S/N）</button>
+    </div>
     <div class="preview-table-wrap" id="ii-preview"></div>
   </div>
 
@@ -617,7 +620,9 @@
       var wb = XLSX.read(data, { type: 'array' });
       var ws = wb.Sheets[wb.SheetNames[0]];
       var json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-      if (!json || json.length < 2) { alert('檔案內容不足'); return; }
+      if (!json || json.length < 1) { alert('檔案內容不足'); return; }
+      window._lastAllData = json; // 全部原始資料供全格匯入使用
+      if (json.length < 2) { alert('檔案內容不足'); return; }
       fileHeaders = json[0].map(function (h) { return String(h); });
       fileRows = json.slice(1).filter(function (r) { return r.some(function (c) { return String(c).trim(); }); });
 
@@ -655,6 +660,37 @@
   function deleteFileRow(i) {
     fileRows.splice(i, 1);
     renderFilePreview();
+  }
+
+  function importAllCells() {
+    var allRows = fileRows.length ? fileRows : [];
+    // Also include header row (row 0) since no real header in grid format
+    var wb = window._lastWb;
+    var toAdd = [];
+    var seen = {};
+    // Collect from all rows including the "header" row
+    var allData = window._lastAllData || [];
+    allData.forEach(function(row) {
+      row.forEach(function(cell) {
+        var sn = String(cell || '').replace(/\s+/g, '').trim();
+        if (sn.length < 4) return;
+        if (seen[sn]) return;
+        if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
+        seen[sn] = true;
+        toAdd.push({ sn: sn, pn: '' });
+      });
+    });
+    if (!toAdd.length) { alert('沒有可匯入的 S/N'); return; }
+    var errEl = document.getElementById('ii-err');
+    errEl.textContent = '⚠ 比對入庫紀錄中（共 ' + toAdd.length + ' 筆）…';
+    callApi({ action: 'checkSNsBatch', sns: toAdd.map(function(i) { return i.sn; }) }).then(function(results) {
+      errEl.textContent = '';
+      showDupResult(results, toAdd);
+    }).catch(function() {
+      toAdd.forEach(function(item) { inventorySnItems.push(item); });
+      renderInventorySnList();
+      errEl.textContent = '';
+    });
   }
 
   function importFileToSnList() {
