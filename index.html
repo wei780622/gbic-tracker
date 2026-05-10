@@ -641,11 +641,19 @@
   }
 
   function renderFilePreview() {
-    var head = '<table><tr>' + fileHeaders.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr>';
-    var body = fileRows.slice(0, 5).map(function (r) {
-      return '<tr>' + fileHeaders.map(function (_, i) { return '<td>' + esc(r[i] || '') + '</td>'; }).join('') + '</tr>';
+    document.getElementById('ii-row-count').textContent = '共 ' + fileRows.length + ' 筆資料';
+    var head = '<table><tr>' + fileHeaders.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '<th></th></tr>';
+    var body = fileRows.map(function (r, i) {
+      return '<tr>' + fileHeaders.map(function (_, ci) { return '<td>' + esc(r[ci] || '') + '</td>'; }).join('') +
+        '<td><button onclick="deleteFileRow(' + i + ')" style="background:none;border:none;color:#d93025;font-size:16px;cursor:pointer;padding:0 4px">×</button></td>' +
+        '</tr>';
     }).join('');
     document.getElementById('ii-preview').innerHTML = head + body + '</table>';
+  }
+
+  function deleteFileRow(i) {
+    fileRows.splice(i, 1);
+    renderFilePreview();
   }
 
   function submitInventoryIn() {
@@ -1062,7 +1070,7 @@
   function parsePasteSN() {
     var ta = document.getElementById('ii-sn-paste');
     if (!ta) return;
-    var lines = ta.value.split(/[\n\r,，\t]+/);
+    var lines = ta.value.split(/[\s,，]+/);
     var added = 0;
     lines.forEach(function(line) {
       var sn = line.trim().replace(/[^A-Za-z0-9\-]/g, '');
