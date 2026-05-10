@@ -233,6 +233,7 @@
       </div>
     </div>
     <p class="hint" id="ii-row-count"></p>
+    <button onclick="importFileToSnList()" style="width:100%;background:#1a73e8;color:white;border:none;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;margin-bottom:8px">→ 匯入 S/N 到上方清單（可逐筆刪除）</button>
     <div class="preview-table-wrap" id="ii-preview"></div>
   </div>
 
@@ -654,6 +655,23 @@
   function deleteFileRow(i) {
     fileRows.splice(i, 1);
     renderFilePreview();
+  }
+
+  function importFileToSnList() {
+    if (!fileRows.length) { alert('請先上傳 CSV / Excel'); return; }
+    var snIdx = parseInt(document.getElementById('ii-sn-col').value);
+    var pnIdx = parseInt(document.getElementById('ii-pn-col').value);
+    var added = 0;
+    fileRows.forEach(function(r) {
+      var sn = snIdx >= 0 ? String(r[snIdx] || '').trim() : '';
+      var pn = pnIdx >= 0 ? String(r[pnIdx] || '').trim() : '';
+      if (!sn) return;
+      if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
+      inventorySnItems.push({ sn: sn, pn: pn });
+      added++;
+    });
+    renderInventorySnList();
+    alert('已匯入 ' + added + ' 筆 S/N 到清單');
   }
 
   function submitInventoryIn() {
