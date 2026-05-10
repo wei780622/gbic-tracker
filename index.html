@@ -207,6 +207,13 @@
   <hr>
   <label style="font-size:13px;color:#666;margin-bottom:6px;display:block">S/N 清單（選填）</label>
   <button class="btn btn-orange" onclick="openOcr('inventory')" style="margin-bottom:6px">📷 上傳照片辨識 S/N</button>
+  <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-end">
+    <div style="flex:1">
+      <label style="font-size:12px;color:#888;margin-bottom:4px;display:block">貼上多筆 S/N（每行一筆）</label>
+      <textarea id="ii-sn-paste" placeholder="MT2606NT02XT8&#10;MT2606NT03AB1&#10;..." style="width:100%;height:80px;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:monospace;resize:vertical"></textarea>
+    </div>
+    <button onclick="parsePasteSN()" style="background:#1a73e8;color:white;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;font-size:14px;font-weight:600;flex-shrink:0;height:44px">加入</button>
+  </div>
   <div id="ii-sn-list" style="margin-bottom:8px"></div>
 
   <div class="file-upload-area" onclick="document.getElementById('ii-file').click()">
@@ -1050,6 +1057,23 @@
       updateScannedUI();
       if (added > 0) document.getElementById('btn-done').style.display = 'block';
     }
+  }
+
+  function parsePasteSN() {
+    var ta = document.getElementById('ii-sn-paste');
+    if (!ta) return;
+    var lines = ta.value.split(/[\n\r,，\t]+/);
+    var added = 0;
+    lines.forEach(function(line) {
+      var sn = line.trim().replace(/[^A-Za-z0-9\-]/g, '');
+      if (sn.length < 4) return;
+      if (inventorySnItems.some(function(i) { return i.sn === sn; })) return;
+      inventorySnItems.push({ sn: sn, pn: '' });
+      added++;
+    });
+    ta.value = '';
+    renderInventorySnList();
+    if (added === 0) alert('沒有新的 S/N 可加入（空白或重複）');
   }
 
   function renderInventorySnList() {
