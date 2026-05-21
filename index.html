@@ -410,8 +410,7 @@
     try {
       var track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
       if (!track) return;
-      var caps = track.getCapabilities ? track.getCapabilities() : {};
-      if (caps.torch) track.applyConstraints({ advanced: [{ torch: true }] }).catch(function(){});
+      track.applyConstraints({ advanced: [{ torch: true }] }).catch(function(){});
     } catch(e) {}
   }
 
@@ -423,7 +422,7 @@
       var detector = new BarcodeDetector({ formats: [
         'code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
       ]});
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', advanced: [{ torch: true }] } })
         .then(function (stream) {
           scanStream = stream; video.srcObject = stream; video.play();
           tryEnableTorch(stream);
@@ -457,7 +456,7 @@
 
     var canvas = document.getElementById('scanner-canvas');
     var ctx = canvas.getContext('2d');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', advanced: [{ torch: true }] } })
       .then(function (stream) {
         scanStream = stream; video.srcObject = stream; video.play();
         tryEnableTorch(stream);
@@ -1592,7 +1591,7 @@
       var det = new BarcodeDetector({ formats: [
         'code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
       ]});
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', advanced: [{ torch: true }] } })
         .then(function(stream) {
           _fsStream = stream; video.srcObject = stream; video.play();
           tryEnableTorch(stream);
@@ -1618,7 +1617,7 @@
     }
 
     var ctx = canvas.getContext('2d');
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', advanced: [{ torch: true }] } })
       .then(function(stream) {
         _fsStream = stream; video.srcObject = stream; video.play();
         tryEnableTorch(stream);
