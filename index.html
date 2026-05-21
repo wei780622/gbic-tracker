@@ -324,7 +324,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzy2lhCS2-HiWhR1F3ZQzl10JGTR2nO195mO5jTCWPZ2jZxwQpk20xDoWzJOlPAPQNK/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxREx9l7eml8NFqbWeYZs9qqIXbGtgLZEU9yLLTsiECKYFwfyZLf0dN7TP2A98P6Zv6/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -593,20 +593,20 @@
       var sel = document.getElementById('u-' + i);
       if (!sel || !sel.value) { errEl.textContent = '⚠ 請設定第 ' + (i + 1) + ' 個設備的 U 數'; return; }
     }
-    errEl.textContent = '';
-    Promise.all(scannedItems.map(function (item, i) {
-      return callApi({ action: 'record', type: currentAction, engineer: engineer,
-        barcode: item.barcode, model: item.model || '', rack: rack,
-        uPosition: document.getElementById('u-' + i).value });
-    })).then(function (results) {
-      var failed = results.filter(function (r) { return !r.success; });
-      document.getElementById('ok-title').textContent = currentAction + '成功（共 ' + scannedItems.length + ' 個）';
-      document.getElementById('ok-detail').innerHTML =
-        '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
-        '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
-        (failed.length ? '<p style="color:#d93025">⚠ ' + failed.length + ' 筆失敗，請手動補登</p>' : '');
-      showPage('pg-ok');
-    }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+    errEl.textContent = '傳送中…';
+    var items = scannedItems.map(function (item, i) {
+      return { barcode: item.barcode, model: item.model || '', uPosition: document.getElementById('u-' + i).value };
+    });
+    callApi({ action: 'recordBatch', type: currentAction, engineer: engineer, rack: rack, items: items })
+      .then(function (result) {
+        errEl.textContent = '';
+        document.getElementById('ok-title').textContent = currentAction + '成功（共 ' + (result.count || items.length) + ' 個）';
+        document.getElementById('ok-detail').innerHTML =
+          '<p><span class="lbl">機櫃：</span>' + esc(rack) + '</p>' +
+          '<p><span class="lbl">工程師：</span>' + esc(engineer) + '</p>' +
+          (!result.success ? '<p style="color:#d93025">⚠ 寫入失敗，請稍後再試</p>' : '');
+        showPage('pg-ok');
+      }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
   }
 
   // ── 庫存上傳 ─────────────────────────────────────────────────────
