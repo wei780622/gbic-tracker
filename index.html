@@ -406,6 +406,15 @@
 
   function resetAndHome() { scannedItems = []; showPage('pg-main'); }
 
+  function tryEnableTorch(stream) {
+    try {
+      var track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+      if (!track) return;
+      var caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.torch) track.applyConstraints({ advanced: [{ torch: true }] }).catch(function(){});
+    } catch(e) {}
+  }
+
   function startScan() {
     var video = document.getElementById('scanner-video');
     scanCooldown = false;
@@ -417,6 +426,7 @@
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then(function (stream) {
           scanStream = stream; video.srcObject = stream; video.play();
+          tryEnableTorch(stream);
           scanTimer = setInterval(function () {
             if (scanCooldown) return;
             detector.detect(video).then(function (codes) {
@@ -439,6 +449,9 @@
         if (result && !scanCooldown) onBarcodeFound(result.getText());
       });
       scanStream = { zxingReader: reader, getTracks: function () { return []; } };
+      setTimeout(function() {
+        if (video.srcObject) tryEnableTorch(video.srcObject);
+      }, 800);
       return;
     }
 
@@ -447,6 +460,7 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then(function (stream) {
         scanStream = stream; video.srcObject = stream; video.play();
+        tryEnableTorch(stream);
         scanTimer = setInterval(function () {
           if (scanCooldown || video.readyState !== video.HAVE_ENOUGH_DATA) return;
           canvas.width = video.videoWidth; canvas.height = video.videoHeight;
@@ -1581,6 +1595,7 @@
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then(function(stream) {
           _fsStream = stream; video.srcObject = stream; video.play();
+          tryEnableTorch(stream);
           _fsTimer = setInterval(function() {
             det.detect(video).then(function(codes) {
               if (codes.length > 0) onFound(codes[0].rawValue);
@@ -1596,6 +1611,9 @@
         if (result) onFound(result.getText());
       });
       _fsStream = { zxingReader: reader, getTracks: function(){ return []; } };
+      setTimeout(function() {
+        if (video.srcObject) tryEnableTorch(video.srcObject);
+      }, 800);
       return;
     }
 
@@ -1603,6 +1621,7 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then(function(stream) {
         _fsStream = stream; video.srcObject = stream; video.play();
+        tryEnableTorch(stream);
         _fsTimer = setInterval(function() {
           if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
           canvas.width = video.videoWidth; canvas.height = video.videoHeight;
