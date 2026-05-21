@@ -324,7 +324,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbziEZQw3O-ozzkTm2TMczCiqGdMUs4tlnOLf1F-7raVrS7t39tc5DCzbrNpERHkIRA/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-gDElEKSK-M5HKIW9IZMqzBo6MxqQZ5kLOizuXpaBHzxvt3zNE28tEXqayAm6tovY/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -834,12 +834,13 @@
     callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
       var el = document.getElementById('res-rack');
       if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無設備上架</p>'; return; }
-      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>工程師</th><th>時間</th><th></th></tr>' +
+      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>設備型號</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th>時間</th><th></th></tr>' +
         data.map(function (r) {
           var row = r._row; var sheet = r._sheet;
+          function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
           return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
-            '<td>' + (r.model ? esc(r.model) : '—') + '</td><td>' + esc(r.engineer) + '</td>' +
-            '<td>' + esc(fmtDate(r.timestamp)) + '</td>' +
+            d(r.model) + d(r.deviceModel) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
+            '<td>' + esc(r.engineer) + '</td><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryRack)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>'; });
@@ -851,12 +852,15 @@
     callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
       var el = document.getElementById('res-barcode');
       if (!data.length) { el.innerHTML = '<p class="no-data">查無此 S/N 紀錄</p>'; return; }
-      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>工程師</th><th></th></tr>' +
+      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>設備型號</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th></th></tr>' +
         data.map(function (r) {
           var row = r._row; var sheet = r._sheet;
+          function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
           return '<tr><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td class="' + (r.type === '上架' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
-            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td><td>' + esc(r.engineer) + '</td>' +
+            '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td>' +
+            d(r.deviceModel) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
+            '<td>' + esc(r.engineer) + '</td>' +
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
