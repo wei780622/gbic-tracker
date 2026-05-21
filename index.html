@@ -334,7 +334,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx-gDElEKSK-M5HKIW9IZMqzBo6MxqQZ5kLOizuXpaBHzxvt3zNE28tEXqayAm6tovY/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDx6M9lKqr-uTUaow7D6kHOAcg6Bvto0NqSDS0kzPsu-NSjldrlVi58nAJ12JobsV3/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -342,6 +342,7 @@
   let scanTimer = null;
   let scannedItems = [];
   let rackOptions = [];
+  var __rackEditStore = [];
   let uOptions = [];
   let scanCooldown = false;
   let fileRows = [];
@@ -861,16 +862,58 @@
     callApi({ action: 'queryByRack', rack: rack }).then(function (data) {
       var el = document.getElementById('res-rack');
       if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無設備上架</p>'; return; }
+      __rackEditStore = data;
       el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>設備型號</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th>時間</th><th></th></tr>' +
-        data.map(function (r) {
+        data.map(function (r, i) {
           var row = r._row; var sheet = r._sheet;
           function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
           return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
             d(r.model) + d(r.deviceModel) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
             '<td>' + esc(r.engineer) + '</td><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
-            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryRack)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
+            '<td style="display:flex;gap:4px;flex-wrap:nowrap">' +
+              '<button onclick="openEditRack(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
+              '<button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryRack)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button>' +
+            '</td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-rack').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  function openEditRack(i) {
+    var r = __rackEditStore[i];
+    if (!r) return;
+    document.getElementById('re-idx').value = i;
+    document.getElementById('re-row').value = r._row;
+    document.getElementById('re-sn').textContent = r.barcode;
+    document.getElementById('re-upos').value = r.uPosition || '';
+    document.getElementById('re-devmodel').value = r.deviceModel || '';
+    document.getElementById('re-mac1').value = r.mac1 || '';
+    document.getElementById('re-mac2').value = r.mac2 || '';
+    document.getElementById('re-extra1').value = r.extra1 || '';
+    document.getElementById('re-extra2').value = r.extra2 || '';
+    document.getElementById('re-err').textContent = '';
+    document.getElementById('rack-edit-modal').style.display = 'flex';
+  }
+
+  function saveEditRack() {
+    var row = parseInt(document.getElementById('re-row').value);
+    var errEl = document.getElementById('re-err');
+    errEl.textContent = '儲存中…';
+    callApi({
+      action: 'updateRow', sheetName: '異動紀錄', rowIndex: row,
+      uPosition:   document.getElementById('re-upos').value.trim(),
+      deviceModel: document.getElementById('re-devmodel').value.trim(),
+      mac1:        document.getElementById('re-mac1').value.trim(),
+      mac2:        document.getElementById('re-mac2').value.trim(),
+      extra1:      document.getElementById('re-extra1').value.trim(),
+      extra2:      document.getElementById('re-extra2').value.trim()
+    }).then(function(res) {
+      if (res.success) {
+        document.getElementById('rack-edit-modal').style.display = 'none';
+        adminQueryRack();
+      } else {
+        errEl.textContent = '儲存失敗：' + (res.error || '未知錯誤');
+      }
+    }).catch(function() { errEl.textContent = '網路錯誤'; });
   }
 
   function adminQueryBarcode() {
@@ -1642,6 +1685,26 @@
     document.getElementById('field-scan-modal').style.display = 'none';
   }
 </script>
+
+<!-- 上架紀錄編輯 Modal -->
+<div id="rack-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box">
+  <div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:440px;box-sizing:border-box;max-height:90vh;overflow-y:auto">
+    <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1a73e8">編輯上架紀錄</p>
+    <p id="re-sn" style="margin:0 0 12px;font-size:13px;color:#666"></p>
+    <input type="hidden" id="re-idx"><input type="hidden" id="re-row">
+    <div class="form-group"><label>U 數</label><input type="text" id="re-upos" placeholder="例：3U"></div>
+    <div class="form-group"><label>設備型號</label><input type="text" id="re-devmodel"></div>
+    <div class="form-group"><label>MAC 1</label><input type="text" id="re-mac1"></div>
+    <div class="form-group"><label>MAC 2</label><input type="text" id="re-mac2"></div>
+    <div class="form-group"><label>其他一</label><input type="text" id="re-extra1"></div>
+    <div class="form-group"><label>其他二</label><input type="text" id="re-extra2"></div>
+    <p id="re-err" style="color:#d93025;font-size:13px;margin:4px 0"></p>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button onclick="saveEditRack()" class="btn" style="flex:1">✓ 儲存</button>
+      <button onclick="document.getElementById('rack-edit-modal').style.display='none'" class="btn btn-grey" style="flex:1">取消</button>
+    </div>
+  </div>
+</div>
 
 <!-- 單欄位掃描 Modal -->
 <div id="field-scan-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
