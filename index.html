@@ -565,18 +565,21 @@
     uOptions.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; uSel.appendChild(o); });
 
     document.getElementById('batch-items').innerHTML = scannedItems.map(function (item, i) {
-      function textInput(id, placeholder) {
-        return '<input type="text" id="' + id + '" placeholder="' + placeholder + '" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;margin-top:6px">';
+      function scanField(id, placeholder) {
+        return '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+          '<input type="text" id="' + id + '" placeholder="' + placeholder + '" style="flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box">' +
+          '<button type="button" onclick="startFieldScan(\'' + id + '\')" style="flex-shrink:0;padding:7px 10px;background:#1a73e8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1">📷</button>' +
+          '</div>';
       }
       return '<div class="batch-item">' +
         '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
         (item.model ? '<div class="batch-item-model">P/N: ' + esc(item.model) + '</div>' : '') +
         buildSelect('u-' + i, uOptions, '-- U 數 --') +
-        textInput('dev-model-' + i, '設備型號') +
-        textInput('mac1-' + i, 'MAC 1') +
-        textInput('mac2-' + i, 'MAC 2') +
-        textInput('extra1-' + i, '其他一') +
-        textInput('extra2-' + i, '其他二') +
+        scanField('dev-model-' + i, '設備型號') +
+        scanField('mac1-' + i, 'MAC 1') +
+        scanField('mac2-' + i, 'MAC 2') +
+        scanField('extra1-' + i, '其他一') +
+        scanField('extra2-' + i, '其他二') +
         '</div>';
     }).join('');
     document.getElementById('batch-err').textContent = '';
@@ -1486,6 +1489,84 @@
       body: JSON.stringify(payload), redirect: 'follow'
     }).then(function (r) { return r.json(); });
   }
+
+  // ── 單欄位掃描 modal ─────────────────────────────────────────────
+  var _fsStream = null, _fsTimer = null, _fsTarget = null;
+
+  function startFieldScan(targetId) {
+    _fsTarget = targetId;
+    var modal = document.getElementById('field-scan-modal');
+    modal.style.display = 'flex';
+    var video = document.getElementById('fs-video');
+    var canvas = document.getElementById('fs-canvas');
+
+    function onFound(val) {
+      if (!val) return;
+      var el = document.getElementById(_fsTarget);
+      if (el) { el.value = val; }
+      stopFieldScan();
+    }
+
+    if (typeof BarcodeDetector !== 'undefined') {
+      var det = new BarcodeDetector({ formats: [
+        'code_128','code_39','code_93','ean_13','ean_8','upc_a','upc_e','itf','codabar','qr_code','data_matrix','pdf417'
+      ]});
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        .then(function(stream) {
+          _fsStream = stream; video.srcObject = stream; video.play();
+          _fsTimer = setInterval(function() {
+            det.detect(video).then(function(codes) {
+              if (codes.length > 0) onFound(codes[0].rawValue);
+            }).catch(function(){});
+          }, 300);
+        }).catch(function() { stopFieldScan(); });
+      return;
+    }
+
+    if (typeof ZXing !== 'undefined') {
+      var reader = new ZXing.BrowserMultiFormatReader();
+      reader.decodeFromVideoDevice(null, 'fs-video', function(result) {
+        if (result) onFound(result.getText());
+      });
+      _fsStream = { zxingReader: reader, getTracks: function(){ return []; } };
+      return;
+    }
+
+    var ctx = canvas.getContext('2d');
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(function(stream) {
+        _fsStream = stream; video.srcObject = stream; video.play();
+        _fsTimer = setInterval(function() {
+          if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+          canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+          if (code && code.data) onFound(code.data);
+        }, 300);
+      }).catch(function() { stopFieldScan(); });
+  }
+
+  function stopFieldScan() {
+    if (_fsTimer) { clearInterval(_fsTimer); _fsTimer = null; }
+    if (_fsStream) {
+      if (_fsStream.zxingReader) _fsStream.zxingReader.reset();
+      else _fsStream.getTracks().forEach(function(t){ t.stop(); });
+      _fsStream = null;
+    }
+    document.getElementById('field-scan-modal').style.display = 'none';
+  }
 </script>
+
+<!-- 單欄位掃描 Modal -->
+<div id="field-scan-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.82);z-index:9999;flex-direction:column;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;padding:20px;width:92%;max-width:420px;box-sizing:border-box;">
+    <p style="margin:0 0 10px;font-size:15px;font-weight:600;color:#1a73e8;">掃描條碼 / QR Code</p>
+    <video id="fs-video" style="width:100%;border-radius:10px;background:#000;" autoplay playsinline muted></video>
+    <canvas id="fs-canvas" style="display:none"></canvas>
+    <button onclick="stopFieldScan()" style="margin-top:12px;width:100%;padding:13px;background:#555;color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;">取消</button>
+  </div>
+</div>
+
 </body>
 </html>
