@@ -324,7 +324,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxREx9l7eml8NFqbWeYZs9qqIXbGtgLZEU9yLLTsiECKYFwfyZLf0dN7TP2A98P6Zv6/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbziEZQw3O-ozzkTm2TMczCiqGdMUs4tlnOLf1F-7raVrS7t39tc5DCzbrNpERHkIRA/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -565,10 +565,18 @@
     uOptions.forEach(function (v) { var o = document.createElement('option'); o.value = v; o.textContent = v; uSel.appendChild(o); });
 
     document.getElementById('batch-items').innerHTML = scannedItems.map(function (item, i) {
+      function textInput(id, placeholder) {
+        return '<input type="text" id="' + id + '" placeholder="' + placeholder + '" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;margin-top:6px">';
+      }
       return '<div class="batch-item">' +
         '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
         (item.model ? '<div class="batch-item-model">P/N: ' + esc(item.model) + '</div>' : '') +
         buildSelect('u-' + i, uOptions, '-- U 數 --') +
+        textInput('dev-model-' + i, '設備型號') +
+        textInput('mac1-' + i, 'MAC 1') +
+        textInput('mac2-' + i, 'MAC 2') +
+        textInput('extra1-' + i, '其他一') +
+        textInput('extra2-' + i, '其他二') +
         '</div>';
     }).join('');
     document.getElementById('batch-err').textContent = '';
@@ -595,7 +603,16 @@
     }
     errEl.textContent = '傳送中…';
     var items = scannedItems.map(function (item, i) {
-      return { barcode: item.barcode, model: item.model || '', uPosition: document.getElementById('u-' + i).value };
+      function val(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; }
+      return {
+        barcode: item.barcode, model: item.model || '',
+        uPosition:   val('u-' + i),
+        deviceModel: val('dev-model-' + i),
+        mac1:        val('mac1-' + i),
+        mac2:        val('mac2-' + i),
+        extra1:      val('extra1-' + i),
+        extra2:      val('extra2-' + i)
+      };
     });
     callApi({ action: 'recordBatch', type: currentAction, engineer: engineer, rack: rack, items: items })
       .then(function (result) {
