@@ -345,7 +345,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoFLkMjMb2QMEYvL6t34Vx3Vuh8LpkVgxJ6bkZbOC6A7knKr7S2f_XgIIOMsVPTH0y/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzIxeto5ciayH9loTREl0h2bRpH9k9tgdidRXTyOUPs6pRZXjMmlN-N7BivG6yoqEjZ/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -867,6 +867,12 @@
   }
 
   document.addEventListener('DOMContentLoaded', function() {
+    var today = new Date().toISOString().split('T')[0];
+    var df = document.getElementById('out-date-from');
+    var dt = document.getElementById('out-date-to');
+    if (df) df.value = today;
+    if (dt) dt.value = today;
+
     var photoInput = document.getElementById('io-photos');
     if (photoInput) {
       photoInput.addEventListener('change', function() {
@@ -1689,13 +1695,21 @@
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
-        '<tr><th>型號</th><th>入庫</th><th>出庫</th><th>現有庫存</th></tr>' +
+        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫</th><th>出庫明細</th><th>現有庫存</th></tr>' +
         data.map(function(r) {
           var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
-          return '<tr><td>' + esc(r.model) + '</td><td>' + r.totalIn + '</td><td>' + r.totalOut + '</td>' +
-            '<td style="' + style + '">' + r.current + '</td></tr>';
+          var inDetail  = (r.inTx  || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
+          var outDetail = (r.outTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
+          return '<tr>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td style="text-align:center">' + r.totalIn + '</td>' +
+            '<td style="font-size:12px;color:#555;line-height:1.8">' + inDetail + '</td>' +
+            '<td style="text-align:center">' + r.totalOut + '</td>' +
+            '<td style="font-size:12px;color:#555;line-height:1.8">' + outDetail + '</td>' +
+            '<td style="text-align:center;' + style + '">' + r.current + '</td>' +
+            '</tr>';
         }).join('') +
-        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td><b>' + total + '</b></td></tr>' +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
         '</table>';
     }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
