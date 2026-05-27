@@ -279,6 +279,13 @@
     <input type="text" id="io-recipient" placeholder="請輸入姓名">
   </div>
 
+  <div class="form-group">
+    <label>照片（最多 5 張）</label>
+    <input type="file" id="io-photos" accept="image/*" multiple style="margin-bottom:8px">
+    <div id="io-photo-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    <p style="font-size:12px;color:#888;margin:4px 0 0">選擇後會顯示預覽，超過 5 張只取前 5 張</p>
+  </div>
+
   <p id="io-err" class="err"></p>
   <button class="btn btn-purple" onclick="submitInventoryOut()">✓ 送出出庫紀錄</button>
   <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回</button>
@@ -314,7 +321,11 @@
 
   <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">領貨出庫紀錄</label>
-  <button class="btn btn-purple" onclick="adminQueryOut()">查詢所有出庫紀錄</button>
+  <div class="date-range">
+    <div class="form-group"><label>起始日期</label><input type="date" id="out-date-from"></div>
+    <div class="form-group"><label>結束日期</label><input type="date" id="out-date-to"></div>
+  </div>
+  <button class="btn btn-purple" onclick="adminQueryOut()">查詢出庫紀錄</button>
   <div id="res-out" style="overflow-x:auto;margin-top:8px"></div>
 
   <hr>
@@ -334,7 +345,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDx6M9lKqr-uTUaow7D6kHOAcg6Bvto0NqSDS0kzPsu-NSjldrlVi58nAJ12JobsV3/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoFLkMjMb2QMEYvL6t34Vx3Vuh8LpkVgxJ6bkZbOC6A7knKr7S2f_XgIIOMsVPTH0y/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -811,6 +822,77 @@
     }
   }
 
+  // ── 照片相關工具 ──────────────────────────────────────────────────
+  function resizeAndBase64(file, maxPx, cb) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        if (w > maxPx || h > maxPx) {
+          var ratio = Math.min(maxPx / w, maxPx / h);
+          w = Math.round(w * ratio); h = Math.round(h * ratio);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        cb(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function uploadPhotos(files, cb) {
+    if (!files || !files.length) { cb([]); return; }
+    var list = Array.prototype.slice.call(files, 0, 5);
+    var urls = []; var done = 0;
+    list.forEach(function(file, idx) {
+      resizeAndBase64(file, 1600, function(dataUrl) {
+        var parts = dataUrl.split(',');
+        var mime  = parts[0].match(/:(.*?);/)[1];
+        var b64   = parts[1];
+        callApi({ action: 'uploadPhoto', base64: b64, mimeType: mime, filename: file.name })
+          .then(function(res) {
+            urls[idx] = res.url || '';
+          })
+          .catch(function() { urls[idx] = ''; })
+          .finally(function() {
+            done++;
+            if (done === list.length) cb(urls.filter(Boolean));
+          });
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var photoInput = document.getElementById('io-photos');
+    if (photoInput) {
+      photoInput.addEventListener('change', function() {
+        var preview = document.getElementById('io-photo-preview');
+        preview.innerHTML = '';
+        var files = Array.prototype.slice.call(this.files, 0, 5);
+        files.forEach(function(f) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            var img = document.createElement('img');
+            img.src = e.target.result;
+            img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid #ddd';
+            preview.appendChild(img);
+          };
+          reader.readAsDataURL(f);
+        });
+        if (this.files.length > 5) {
+          var warn = document.createElement('p');
+          warn.textContent = '⚠ 只取前 5 張';
+          warn.style.cssText = 'color:#d93025;font-size:12px;width:100%;margin:4px 0 0';
+          preview.appendChild(warn);
+        }
+      });
+    }
+  });
+
   // ── 領貨出庫 ─────────────────────────────────────────────────────
   function submitInventoryOut() {
     var date      = document.getElementById('io-date').value;
@@ -826,21 +908,30 @@
     if (!date || !device || !model || !qty || !csiStaff || !recipient) {
       errEl.textContent = '⚠ 請填寫所有欄位'; return;
     }
-    callApi({ action: 'recordInventoryOut', date: date, deviceType: device, model: model,
-      quantity: qty, rack: rack, csiStaff: csiStaff, recipient: recipient })
-      .then(function (data) {
-        if (data.success) {
-          document.getElementById('ok-title').textContent = '出庫紀錄已送出';
-          document.getElementById('ok-detail').innerHTML =
-            '<p><span class="lbl">領用設備：</span>' + esc(device) + '</p>' +
-            '<p><span class="lbl">型號：</span>' + esc(model) + '</p>' +
-            '<p><span class="lbl">數量：</span>' + esc(qty) + '</p>' +
-            (rack ? '<p><span class="lbl">Rack 編號：</span>' + esc(rack) + '</p>' : '') +
-            '<p><span class="lbl">CSI 出庫：</span>' + esc(csiStaff) + '</p>' +
-            '<p><span class="lbl">領用人：</span>' + esc(recipient) + '</p>';
-          showPage('pg-ok');
-        } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
-      }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+
+    var photoFiles = document.getElementById('io-photos').files;
+    errEl.textContent = photoFiles.length ? '上傳照片中…' : '';
+
+    uploadPhotos(photoFiles, function(photoUrls) {
+      callApi({ action: 'recordInventoryOut', date: date, deviceType: device, model: model,
+        quantity: qty, rack: rack, csiStaff: csiStaff, recipient: recipient, photos: photoUrls })
+        .then(function (data) {
+          if (data.success) {
+            document.getElementById('ok-title').textContent = '出庫紀錄已送出';
+            document.getElementById('ok-detail').innerHTML =
+              '<p><span class="lbl">領用設備：</span>' + esc(device) + '</p>' +
+              '<p><span class="lbl">型號：</span>' + esc(model) + '</p>' +
+              '<p><span class="lbl">數量：</span>' + esc(qty) + '</p>' +
+              (rack ? '<p><span class="lbl">Rack 編號：</span>' + esc(rack) + '</p>' : '') +
+              '<p><span class="lbl">CSI 出庫：</span>' + esc(csiStaff) + '</p>' +
+              '<p><span class="lbl">領用人：</span>' + esc(recipient) + '</p>' +
+              (photoUrls.length ? '<p><span class="lbl">照片：</span>' + photoUrls.length + ' 張已上傳</p>' : '');
+            document.getElementById('io-photos').value = '';
+            document.getElementById('io-photo-preview').innerHTML = '';
+            showPage('pg-ok');
+          } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
+        }).catch(function () { errEl.textContent = '網路錯誤，請稍後再試'; });
+    });
   }
 
   // ── Admin ────────────────────────────────────────────────────────
@@ -1466,14 +1557,23 @@
       }).catch(function() { alert('網路錯誤'); });
   }
 
+  var __outStore = [];
+
   function adminQueryOut() {
-    callApi({ action: 'queryInventoryOut' }).then(function (data) {
-      var el = document.getElementById('res-out');
+    var dateFrom = (document.getElementById('out-date-from') || {}).value || '';
+    var dateTo   = (document.getElementById('out-date-to')   || {}).value || '';
+    var el = document.getElementById('res-out');
+    el.innerHTML = '<p class="no-data">查詢中…</p>';
+    callApi({ action: 'queryInventoryOut', dateFrom: dateFrom, dateTo: dateTo }).then(function (data) {
+      __outStore = data;
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無出庫紀錄</p>'; return; }
       el.innerHTML = '<table>' +
-        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th><th></th></tr>' +
-        data.map(function (r) {
+        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th><th>照片</th><th></th></tr>' +
+        data.map(function (r, i) {
           var row = r._row; var sheet = r._sheet;
+          var photoLinks = (r.photos || []).map(function(url, pi) {
+            return '<a href="' + esc(url) + '" target="_blank" style="color:#1a73e8;font-size:12px;margin-right:4px">[' + (pi+1) + ']</a>';
+          }).join('');
           return '<tr>' +
             '<td>' + esc(fmtDate(r.date)) + '</td>' +
             '<td>' + esc(r.device) + '</td>' +
@@ -1482,13 +1582,103 @@
             '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
             '<td>' + esc(r.csiStaff) + '</td>' +
             '<td>' + esc(r.recipient) + '</td>' +
-            '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryOut)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td>' +
+            '<td style="white-space:nowrap">' + (photoLinks || '—') + '</td>' +
+            '<td style="white-space:nowrap;display:flex;gap:4px">' +
+              '<button onclick="openOutEdit(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
+              '<button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryOut)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button>' +
+            '</td>' +
             '</tr>';
         }).join('') + '</table>';
     }).catch(function () {
       document.getElementById('res-out').innerHTML = '<p class="no-data">查詢失敗</p>';
     });
   }
+
+  function openOutEdit(idx) {
+    var r = __outStore[idx];
+    if (!r) return;
+    var modal = document.getElementById('out-edit-modal');
+    modal.style.display = 'flex';
+    document.getElementById('oe-row').value   = r._row;
+    document.getElementById('oe-date').value  = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
+    document.getElementById('oe-device').value    = r.device    || '';
+    document.getElementById('oe-model').value     = r.model     || '';
+    document.getElementById('oe-qty').value       = r.quantity  || '';
+    document.getElementById('oe-rack').value      = r.rack      || '';
+    document.getElementById('oe-csi').value       = r.csiStaff  || '';
+    document.getElementById('oe-recipient').value = r.recipient || '';
+    // 顯示現有照片
+    var existEl = document.getElementById('oe-existing-photos');
+    existEl.innerHTML = (r.photos || []).map(function(url, i) {
+      return '<a href="' + esc(url) + '" target="_blank" style="font-size:12px;color:#1a73e8">[照片' + (i+1) + ']</a>';
+    }).join(' ') || '（無）';
+    // 儲存現有 URLs 供後續合併
+    modal.dataset.existingPhotos = JSON.stringify(r.photos || []);
+    document.getElementById('oe-new-preview').innerHTML = '';
+    document.getElementById('oe-new-photos').value = '';
+    document.getElementById('oe-err').textContent = '';
+  }
+
+  function closeOutEdit() {
+    document.getElementById('out-edit-modal').style.display = 'none';
+  }
+
+  function saveOutEdit() {
+    var rowIndex  = parseInt(document.getElementById('oe-row').value);
+    var date      = document.getElementById('oe-date').value;
+    var device    = document.getElementById('oe-device').value.trim();
+    var model     = document.getElementById('oe-model').value.trim();
+    var qty       = document.getElementById('oe-qty').value;
+    var rack      = document.getElementById('oe-rack').value.trim();
+    var csiStaff  = document.getElementById('oe-csi').value.trim();
+    var recipient = document.getElementById('oe-recipient').value.trim();
+    var errEl     = document.getElementById('oe-err');
+    errEl.textContent = '';
+
+    if (!date || !device || !model || !qty || !csiStaff || !recipient) {
+      errEl.textContent = '⚠ 請填寫所有欄位'; return;
+    }
+
+    var modal = document.getElementById('out-edit-modal');
+    var existingPhotos = JSON.parse(modal.dataset.existingPhotos || '[]');
+    var newFiles = document.getElementById('oe-new-photos').files;
+
+    errEl.textContent = newFiles.length ? '上傳新照片中…' : '';
+
+    uploadPhotos(newFiles, function(newUrls) {
+      // 合併：現有照片 + 新照片，最多 5 張
+      var merged = existingPhotos.concat(newUrls).slice(0, 5);
+      callApi({ action: 'updateInventoryOut', rowIndex: rowIndex, date: date,
+        deviceType: device, model: model, quantity: qty, rack: rack,
+        csiStaff: csiStaff, recipient: recipient, photos: merged })
+        .then(function(d) {
+          if (d.success) { closeOutEdit(); adminQueryOut(); }
+          else { errEl.textContent = '儲存失敗：' + (d.error || '未知'); }
+        }).catch(function() { errEl.textContent = '網路錯誤'; });
+    });
+  }
+
+  // 編輯 modal 新照片預覽
+  document.addEventListener('DOMContentLoaded', function() {
+    var newPhotoInput = document.getElementById('oe-new-photos');
+    if (newPhotoInput) {
+      newPhotoInput.addEventListener('change', function() {
+        var preview = document.getElementById('oe-new-preview');
+        preview.innerHTML = '';
+        var files = Array.prototype.slice.call(this.files, 0, 5);
+        files.forEach(function(f) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            var img = document.createElement('img');
+            img.src = e.target.result;
+            img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #ddd';
+            preview.appendChild(img);
+          };
+          reader.readAsDataURL(f);
+        });
+      });
+    }
+  });
 
   // ── 庫存總覽 ─────────────────────────────────────────────────────
   function adminQuerySummary() {
@@ -1713,6 +1903,35 @@
     <video id="fs-video" style="width:100%;border-radius:10px;background:#000;" autoplay playsinline muted></video>
     <canvas id="fs-canvas" style="display:none"></canvas>
     <button onclick="stopFieldScan()" style="margin-top:12px;width:100%;padding:13px;background:#555;color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;">取消</button>
+  </div>
+</div>
+
+<!-- Modal: 編輯出庫紀錄 -->
+<div id="out-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 16px;font-size:16px">編輯出庫紀錄</h3>
+    <input type="hidden" id="oe-row">
+    <div class="form-group"><label>日期</label><input type="date" id="oe-date"></div>
+    <div class="form-group"><label>領用設備</label><input type="text" id="oe-device"></div>
+    <div class="form-group"><label>領用型號</label><input type="text" id="oe-model"></div>
+    <div class="form-group"><label>領用數量</label><input type="number" id="oe-qty" min="1"></div>
+    <div class="form-group"><label>Rack 編號</label><input type="text" id="oe-rack"></div>
+    <div class="form-group"><label>CSI 出庫人員</label><input type="text" id="oe-csi"></div>
+    <div class="form-group"><label>領用人員</label><input type="text" id="oe-recipient"></div>
+    <div class="form-group">
+      <label>現有照片</label>
+      <div id="oe-existing-photos" style="font-size:13px;padding:6px 0;line-height:2"></div>
+    </div>
+    <div class="form-group">
+      <label>新增照片（會附加到現有照片後，總數上限 5 張）</label>
+      <input type="file" id="oe-new-photos" accept="image/*" multiple>
+      <div id="oe-new-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+    </div>
+    <p id="oe-err" class="err"></p>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-purple" style="flex:1" onclick="saveOutEdit()">儲存</button>
+      <button class="btn btn-grey" style="flex:1" onclick="closeOutEdit()">取消</button>
+    </div>
   </div>
 </div>
 
