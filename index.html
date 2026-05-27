@@ -1600,26 +1600,39 @@
     });
   }
 
+  function renderExistingPhotos(photos) {
+    var existEl = document.getElementById('oe-existing-photos');
+    if (!photos || !photos.length) { existEl.innerHTML = '<span style="color:#aaa;font-size:12px">（無）</span>'; return; }
+    existEl.innerHTML = photos.map(function(url, i) {
+      return '<div class="oe-photo-row" data-url="' + esc(url) + '" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        '<a href="' + esc(url) + '" target="_blank" style="font-size:13px;color:#1a73e8;flex:1">照片 ' + (i+1) + '</a>' +
+        '<button onclick="removeExistingPhoto(this)" style="background:#d93025;color:white;border:none;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer">刪除</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function removeExistingPhoto(btn) {
+    var row = btn.closest('.oe-photo-row');
+    if (row) row.remove();
+    // 重新編號
+    var rows = document.getElementById('oe-existing-photos').querySelectorAll('.oe-photo-row a');
+    rows.forEach(function(a, i) { a.textContent = '照片 ' + (i+1); });
+  }
+
   function openOutEdit(idx) {
     var r = __outStore[idx];
     if (!r) return;
     var modal = document.getElementById('out-edit-modal');
     modal.style.display = 'flex';
-    document.getElementById('oe-row').value   = r._row;
-    document.getElementById('oe-date').value  = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
+    document.getElementById('oe-row').value       = r._row;
+    document.getElementById('oe-date').value      = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
     document.getElementById('oe-device').value    = r.device    || '';
     document.getElementById('oe-model').value     = r.model     || '';
     document.getElementById('oe-qty').value       = r.quantity  || '';
     document.getElementById('oe-rack').value      = r.rack      || '';
     document.getElementById('oe-csi').value       = r.csiStaff  || '';
     document.getElementById('oe-recipient').value = r.recipient || '';
-    // 顯示現有照片
-    var existEl = document.getElementById('oe-existing-photos');
-    existEl.innerHTML = (r.photos || []).map(function(url, i) {
-      return '<a href="' + esc(url) + '" target="_blank" style="font-size:12px;color:#1a73e8">[照片' + (i+1) + ']</a>';
-    }).join(' ') || '（無）';
-    // 儲存現有 URLs 供後續合併
-    modal.dataset.existingPhotos = JSON.stringify(r.photos || []);
+    renderExistingPhotos(r.photos || []);
     document.getElementById('oe-new-preview').innerHTML = '';
     document.getElementById('oe-new-photos').value = '';
     document.getElementById('oe-err').textContent = '';
@@ -1645,14 +1658,17 @@
       errEl.textContent = '⚠ 請填寫所有欄位'; return;
     }
 
-    var modal = document.getElementById('out-edit-modal');
-    var existingPhotos = JSON.parse(modal.dataset.existingPhotos || '[]');
+    // 從 DOM 收集剩餘照片（未被刪除的）
+    var existingPhotos = Array.prototype.map.call(
+      document.getElementById('oe-existing-photos').querySelectorAll('.oe-photo-row'),
+      function(row) { return row.dataset.url || ''; }
+    ).filter(Boolean);
     var newFiles = document.getElementById('oe-new-photos').files;
 
     errEl.textContent = newFiles.length ? '上傳新照片中…' : '';
 
     uploadPhotos(newFiles, function(newUrls) {
-      // 合併：現有照片 + 新照片，最多 5 張
+      // 合併：現有照片（未刪除）+ 新照片，最多 5 張
       var merged = existingPhotos.concat(newUrls).slice(0, 5);
       callApi({ action: 'updateInventoryOut', rowIndex: rowIndex, date: date,
         deviceType: device, model: model, quantity: qty, rack: rack,
