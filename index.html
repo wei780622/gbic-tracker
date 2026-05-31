@@ -144,6 +144,10 @@
     <div class="scan-frame"></div>
   </div>
   <p class="hint">對準條碼，連續掃多個；MT開頭=S/N，其他=P/N</p>
+  <div style="display:flex;gap:8px;margin-top:4px">
+    <button id="btn-torch"  class="btn btn-grey" onclick="toggleTorch()"  style="flex:1">🔦 關閉閃光</button>
+    <button id="btn-camera" class="btn btn-grey" onclick="toggleCamera()" style="flex:1">📷 關閉相機</button>
+  </div>
   <button class="btn btn-orange" onclick="openOcr('scan')" style="margin-top:4px">📷 上傳照片辨識 S/N</button>
   <div class="scan-count" id="scan-count"></div>
   <div id="scanned-list"></div>
@@ -409,14 +413,21 @@
   function startAction(action) {
     currentAction = action;
     scannedItems = [];
+    torchOn  = true;
+    cameraOn = true;
     document.getElementById('scan-title').textContent = '掃描設備條碼（' + action + '）';
     document.getElementById('batch-title').textContent = action + '設備';
+    document.getElementById('btn-torch').textContent  = '🔦 關閉閃光';
+    document.getElementById('btn-camera').textContent = '📷 關閉相機';
     updateScannedUI();
     showPage('pg-scan');
     startScan();
   }
 
   function resetAndHome() { scannedItems = []; showPage('pg-main'); }
+
+  var torchOn  = true;
+  var cameraOn = true;
 
   function tryEnableTorch(stream) {
     try {
@@ -426,8 +437,35 @@
     } catch(e) {}
   }
 
+  function toggleTorch() {
+    try {
+      var track = scanStream && scanStream.getVideoTracks && scanStream.getVideoTracks()[0];
+      if (!track) return;
+      torchOn = !torchOn;
+      track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function(){});
+      document.getElementById('btn-torch').textContent = torchOn ? '🔦 關閉閃光' : '🔦 開啟閃光';
+    } catch(e) {}
+  }
+
+  function toggleCamera() {
+    var video = document.getElementById('scanner-video');
+    var wrap  = document.getElementById('scanner-wrap');
+    cameraOn = !cameraOn;
+    if (cameraOn) {
+      wrap.style.display = '';
+      startScan();
+      document.getElementById('btn-camera').textContent = '📷 關閉相機';
+    } else {
+      stopScan();
+      wrap.style.display = 'none';
+      document.getElementById('btn-camera').textContent = '📷 開啟相機';
+    }
+  }
+
   function startScan() {
     var video = document.getElementById('scanner-video');
+    var wrap = document.getElementById('scanner-wrap');
+    if (wrap) wrap.style.display = '';
     scanCooldown = false;
 
     if (typeof BarcodeDetector !== 'undefined') {
@@ -444,7 +482,7 @@
               if (codes.length > 0) onBarcodeFound(codes[0].rawValue);
             }).catch(function () {});
           }, 300);
-        }).catch(function () { stopScan(); showPage('pg-main'); });
+        }).catch(function () { showScanNoCameraFallback(); });
       return;
     }
 
@@ -480,7 +518,15 @@
           var code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
           if (code && code.data) onBarcodeFound(code.data);
         }, 300);
-      }).catch(function () { stopScan(); showPage('pg-main'); });
+      }).catch(function () { showScanNoCameraFallback(); });
+  }
+
+  function showScanNoCameraFallback() {
+    stopScan();
+    var wrap = document.getElementById('scanner-wrap');
+    if (wrap) wrap.style.display = 'none';
+    var hint = document.querySelector('#pg-scan .hint');
+    if (hint) hint.textContent = '⚠ 相機無法存取，請使用手動輸入或上傳照片辨識';
   }
 
   function stopScan() {
