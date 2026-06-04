@@ -197,7 +197,7 @@
   </div>
   <div class="form-group">
     <label>庫存型號</label>
-    <input type="text" id="ii-model" placeholder="請輸入型號">
+    <input type="text" id="ii-model" placeholder="請輸入或選擇型號" list="model-datalist" autocomplete="off">
   </div>
   <div class="form-group">
     <label>庫存數量</label>
@@ -264,7 +264,7 @@
   </div>
   <div class="form-group">
     <label>領用型號</label>
-    <input type="text" id="io-model" placeholder="請輸入型號">
+    <input type="text" id="io-model" placeholder="請輸入或選擇型號" list="model-datalist" autocomplete="off">
   </div>
   <div class="form-group">
     <label>領用數量</label>
@@ -349,7 +349,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxf-suq-pFtudSDZ1wMc5m5jLqWiIM1wXNmSaeBJcV8EpQDIYJx8s2uoif2a__9Akb1/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxe9reh5ntHw7XZh2xay9exVepxqJtVWUq_4Am0AHzAu41wc3PACCoNQvclBMjZcCrt/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -359,6 +359,7 @@
   let rackOptions = [];
   var __rackEditStore = [];
   let uOptions = [];
+  let modelOptions = [];
   let scanCooldown = false;
   let fileRows = [];
   let fileHeaders = [];
@@ -384,8 +385,15 @@
     callApi({ action: 'getOptions' }).then(function (data) {
       rackOptions = data.racks;
       uOptions = data.uNumbers;
+      modelOptions = data.models || [];
       fillSelect('a-rack', rackOptions);
       buildExportRackCheckboxes();
+      var dl = document.getElementById('model-datalist');
+      if (dl) {
+        dl.innerHTML = modelOptions.map(function(m) {
+          return '<option value="' + esc(m) + '">';
+        }).join('');
+      }
     }).catch(function () { alert('無法載入選單，請重新整理'); });
   };
 
@@ -657,7 +665,10 @@
         '<div class="batch-item-barcode">' + esc(item.barcode) + '</div>' +
         (item.model ? '<div class="batch-item-model">P/N: ' + esc(item.model) + '</div>' : '') +
         buildSelect('u-' + i, uOptions, '-- U 數 --') +
-        scanField('dev-model-' + i, '設備型號') +
+        '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+          '<input type="text" id="dev-model-' + i + '" placeholder="設備型號" list="model-datalist" autocomplete="off" style="flex:1;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box">' +
+          '<button type="button" onclick="startFieldScan(\'dev-model-' + i + '\')" style="flex-shrink:0;padding:7px 10px;background:#1a73e8;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px;line-height:1">📷</button>' +
+          '</div>' +
         scanField('mac1-' + i, 'MAC 1') +
         scanField('mac2-' + i, 'MAC 2') +
         scanField('extra1-' + i, '其他一') +
@@ -1989,7 +2000,7 @@
     <input type="hidden" id="oe-row">
     <div class="form-group"><label>日期</label><input type="date" id="oe-date"></div>
     <div class="form-group"><label>領用設備</label><input type="text" id="oe-device"></div>
-    <div class="form-group"><label>領用型號</label><input type="text" id="oe-model"></div>
+    <div class="form-group"><label>領用型號</label><input type="text" id="oe-model" list="model-datalist" autocomplete="off"></div>
     <div class="form-group"><label>領用數量</label><input type="number" id="oe-qty" min="1"></div>
     <div class="form-group"><label>Rack 編號</label><input type="text" id="oe-rack"></div>
     <div class="form-group"><label>CSI 出庫人員</label><input type="text" id="oe-csi"></div>
@@ -2011,5 +2022,6 @@
   </div>
 </div>
 
+<datalist id="model-datalist"></datalist>
 </body>
 </html>
