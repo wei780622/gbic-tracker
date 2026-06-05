@@ -25,6 +25,7 @@
     .btn-grey   { background: #757575; }
     .btn-orange { background: #e37400; }
     .btn-purple { background: #7b2ff7; }
+    .btn-teal   { background: #00897b; }
     .form-group { margin: 12px 0; }
     label { display: block; font-size: 13px; color: #666; margin-bottom: 5px; }
     input[type=text], input[type=number], input[type=date], select, textarea {
@@ -116,6 +117,7 @@
   <button class="btn btn-green" onclick="startAction('歸還')">📥 歸還設備</button>
   <button class="btn btn-orange" onclick="showPage('pg-inv-in')">📦 庫存上傳</button>
   <button class="btn btn-purple" onclick="showPage('pg-inv-out')">🚚 領貨出庫</button>
+  <button class="btn btn-teal"   onclick="showPage('pg-inv-ret')">🔄 領貨回庫</button>
   <div id="admin-btn-wrap"></div>
 </div>
 
@@ -295,6 +297,51 @@
   <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回</button>
 </div>
 
+<!-- Page: 領貨回庫 -->
+<div id="pg-inv-ret" class="page">
+  <h2>🔄 領貨回庫</h2>
+
+  <div class="form-group">
+    <label>日期</label>
+    <input type="date" id="iret-date">
+  </div>
+  <div class="form-group">
+    <label>回庫設備</label>
+    <input type="text" id="iret-device" placeholder="例：Server、GBIC、Switch…">
+  </div>
+  <div class="form-group">
+    <label>回庫型號</label>
+    <input type="text" id="iret-model" placeholder="請輸入或選擇型號" list="model-datalist" autocomplete="off">
+  </div>
+  <div class="form-group">
+    <label>回庫數量</label>
+    <input type="number" id="iret-qty" placeholder="請輸入數量" min="1">
+  </div>
+  <div class="form-group">
+    <label>回庫前所在 Rack 編號</label>
+    <input type="text" id="iret-rack" placeholder="例：G08、H03（選填）">
+  </div>
+  <div class="form-group">
+    <label>CSI 回庫人員</label>
+    <input type="text" id="iret-csi" placeholder="請輸入姓名">
+  </div>
+  <div class="form-group">
+    <label>回庫人員</label>
+    <input type="text" id="iret-retstaff" placeholder="請輸入姓名">
+  </div>
+
+  <div class="form-group">
+    <label>照片（最多 5 張）</label>
+    <input type="file" id="iret-photos" accept="image/*" multiple style="margin-bottom:8px">
+    <div id="iret-photo-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    <p style="font-size:12px;color:#888;margin:4px 0 0">選擇後會顯示預覽，超過 5 張只取前 5 張</p>
+  </div>
+
+  <p id="iret-err" class="err"></p>
+  <button class="btn btn-teal" onclick="submitInventoryReturn()">✓ 送出回庫紀錄</button>
+  <button class="btn btn-grey" onclick="showPage('pg-main')">← 返回</button>
+</div>
+
 <!-- Page: Admin -->
 <div id="pg-admin" class="page">
   <h2>查詢 / 匯出</h2>
@@ -333,6 +380,15 @@
   <div id="res-out" style="overflow-x:auto;margin-top:8px"></div>
 
   <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">領貨回庫紀錄</label>
+  <div class="date-range">
+    <div class="form-group"><label>起始日期</label><input type="date" id="ret-date-from"></div>
+    <div class="form-group"><label>結束日期</label><input type="date" id="ret-date-to"></div>
+  </div>
+  <button class="btn btn-teal" onclick="adminQueryReturn()">查詢回庫紀錄</button>
+  <div id="res-ret" style="overflow-x:auto;margin-top:8px"></div>
+
+  <hr>
   <div style="background:#f8f9fa;border-radius:12px;padding:16px;margin-bottom:8px">
     <p style="font-size:14px;font-weight:600;color:#1a73e8;margin:0 0 10px">⬇ 進階匯出 CSV</p>
     <div style="display:flex;gap:8px;margin-bottom:8px">
@@ -349,7 +405,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxe9reh5ntHw7XZh2xay9exVepxqJtVWUq_4Am0AHzAu41wc3PACCoNQvclBMjZcCrt/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyvAgo3poiqa6cvjZyl6DgJLh5BpSasY41omICnFJluy7K1ijxnCB7z6d0VQahTnV0Y/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -379,6 +435,7 @@
     }
     document.getElementById('ii-date').value = today();
     document.getElementById('io-date').value = today();
+    document.getElementById('iret-date').value = today();
     document.getElementById('in-date-from').value = today();
     document.getElementById('in-date-to').value = today();
 
@@ -929,11 +986,16 @@
     var dt = document.getElementById('out-date-to');
     if (df) df.value = today;
     if (dt) dt.value = today;
+    var rdf = document.getElementById('ret-date-from');
+    var rdt = document.getElementById('ret-date-to');
+    if (rdf) rdf.value = today;
+    if (rdt) rdt.value = today;
 
-    var photoInput = document.getElementById('io-photos');
-    if (photoInput) {
+    function bindPhotoPreview(inputId, previewId) {
+      var photoInput = document.getElementById(inputId);
+      if (!photoInput) return;
       photoInput.addEventListener('change', function() {
-        var preview = document.getElementById('io-photo-preview');
+        var preview = document.getElementById(previewId);
         preview.innerHTML = '';
         var files = Array.prototype.slice.call(this.files, 0, 5);
         files.forEach(function(f) {
@@ -954,6 +1016,8 @@
         }
       });
     }
+    bindPhotoPreview('io-photos', 'io-photo-preview');
+    bindPhotoPreview('iret-photos', 'iret-photo-preview');
   });
 
   // ── 領貨出庫 ─────────────────────────────────────────────────────
@@ -1759,6 +1823,182 @@
     }
   });
 
+  // ── 領貨回庫 ─────────────────────────────────────────────────────
+  var __retStore = [];
+
+  function submitInventoryReturn() {
+    var date        = document.getElementById('iret-date').value;
+    var device      = document.getElementById('iret-device').value.trim();
+    var model       = document.getElementById('iret-model').value.trim();
+    var qty         = document.getElementById('iret-qty').value;
+    var rack        = document.getElementById('iret-rack').value.trim();
+    var csiStaff    = document.getElementById('iret-csi').value.trim();
+    var returnStaff = document.getElementById('iret-retstaff').value.trim();
+    var errEl       = document.getElementById('iret-err');
+    errEl.textContent = '';
+
+    if (!date || !device || !model || !qty || !csiStaff || !returnStaff) {
+      errEl.textContent = '⚠ 請填寫所有欄位'; return;
+    }
+
+    var photoFiles = document.getElementById('iret-photos').files;
+    errEl.textContent = photoFiles.length ? '上傳照片中…' : '';
+
+    uploadPhotos(photoFiles, function(photoUrls) {
+      callApi({ action: 'recordInventoryReturn', date: date, deviceType: device, model: model,
+        quantity: qty, rack: rack, csiStaff: csiStaff, returnStaff: returnStaff, photos: photoUrls })
+        .then(function(data) {
+          if (data.success) {
+            document.getElementById('ok-title').textContent = '回庫紀錄已送出';
+            document.getElementById('ok-detail').innerHTML =
+              '<p><span class="lbl">回庫設備：</span>' + esc(device) + '</p>' +
+              '<p><span class="lbl">型號：</span>' + esc(model) + '</p>' +
+              '<p><span class="lbl">數量：</span>' + esc(qty) + '</p>' +
+              (rack ? '<p><span class="lbl">Rack 編號：</span>' + esc(rack) + '</p>' : '') +
+              '<p><span class="lbl">CSI 回庫：</span>' + esc(csiStaff) + '</p>' +
+              '<p><span class="lbl">回庫人員：</span>' + esc(returnStaff) + '</p>' +
+              (photoUrls.length ? '<p><span class="lbl">照片：</span>' + photoUrls.length + ' 張已上傳</p>' : '');
+            document.getElementById('iret-photos').value = '';
+            document.getElementById('iret-photo-preview').innerHTML = '';
+            showPage('pg-ok');
+          } else { errEl.textContent = '送出失敗：' + (data.error || '未知錯誤'); }
+        }).catch(function() { errEl.textContent = '網路錯誤，請稍後再試'; });
+    });
+  }
+
+  function adminQueryReturn() {
+    var dateFrom = (document.getElementById('ret-date-from') || {}).value || '';
+    var dateTo   = (document.getElementById('ret-date-to')   || {}).value || '';
+    var el = document.getElementById('res-ret');
+    el.innerHTML = '<p class="no-data">查詢中…</p>';
+    callApi({ action: 'queryInventoryReturn', dateFrom: dateFrom, dateTo: dateTo }).then(function(data) {
+      __retStore = data;
+      if (!data.length) { el.innerHTML = '<p class="no-data">尚無回庫紀錄</p>'; return; }
+      el.innerHTML = '<table>' +
+        '<tr><th>日期</th><th>回庫設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI回庫</th><th>回庫人</th><th>照片</th><th></th></tr>' +
+        data.map(function(r, i) {
+          var row = r._row; var sheet = r._sheet;
+          var photoLinks = (r.photos || []).map(function(url, pi) {
+            return '<a href="' + esc(url) + '" target="_blank" style="color:#1a73e8;font-size:12px;margin-right:4px">[' + (pi+1) + ']</a>';
+          }).join('');
+          return '<tr>' +
+            '<td>' + esc(fmtDate(r.date)) + '</td>' +
+            '<td>' + esc(r.device) + '</td>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td>' + esc(r.quantity) + '</td>' +
+            '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
+            '<td>' + esc(r.csiStaff) + '</td>' +
+            '<td>' + esc(r.returnStaff) + '</td>' +
+            '<td style="white-space:nowrap">' + (photoLinks || '—') + '</td>' +
+            '<td style="white-space:nowrap;display:flex;gap:4px">' +
+              '<button onclick="openRetEdit(' + i + ')" style="background:#00897b;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
+              '<button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryReturn)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button>' +
+            '</td>' +
+            '</tr>';
+        }).join('') + '</table>';
+    }).catch(function() {
+      document.getElementById('res-ret').innerHTML = '<p class="no-data">查詢失敗</p>';
+    });
+  }
+
+  function openRetEdit(idx) {
+    var r = __retStore[idx];
+    if (!r) return;
+    var modal = document.getElementById('ret-edit-modal');
+    modal.style.display = 'flex';
+    document.getElementById('rte-row').value        = r._row;
+    document.getElementById('rte-date').value       = r.date ? new Date(r.date).toISOString().split('T')[0] : '';
+    document.getElementById('rte-device').value     = r.device      || '';
+    document.getElementById('rte-model').value      = r.model       || '';
+    document.getElementById('rte-qty').value        = r.quantity    || '';
+    document.getElementById('rte-rack').value       = r.rack        || '';
+    document.getElementById('rte-csi').value        = r.csiStaff    || '';
+    document.getElementById('rte-retstaff').value   = r.returnStaff || '';
+    renderRetExistingPhotos(r.photos || []);
+    document.getElementById('rte-new-preview').innerHTML = '';
+    document.getElementById('rte-new-photos').value = '';
+    document.getElementById('rte-err').textContent = '';
+  }
+
+  function closeRetEdit() {
+    document.getElementById('ret-edit-modal').style.display = 'none';
+  }
+
+  function renderRetExistingPhotos(photos) {
+    var existEl = document.getElementById('rte-existing-photos');
+    if (!photos || !photos.length) { existEl.innerHTML = '<span style="color:#aaa;font-size:12px">（無）</span>'; return; }
+    existEl.innerHTML = photos.map(function(url, i) {
+      return '<div class="oe-photo-row" data-url="' + esc(url) + '" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">' +
+        '<a href="' + esc(url) + '" target="_blank" style="font-size:13px;color:#1a73e8;flex:1">照片 ' + (i+1) + '</a>' +
+        '<button onclick="removeRetExistingPhoto(this)" style="background:#d93025;color:white;border:none;border-radius:5px;padding:2px 8px;font-size:12px;cursor:pointer">刪除</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function removeRetExistingPhoto(btn) {
+    var row = btn.closest('.oe-photo-row');
+    if (row) row.remove();
+    var rows = document.getElementById('rte-existing-photos').querySelectorAll('.oe-photo-row a');
+    rows.forEach(function(a, i) { a.textContent = '照片 ' + (i+1); });
+  }
+
+  function saveRetEdit() {
+    var rowIndex    = parseInt(document.getElementById('rte-row').value);
+    var date        = document.getElementById('rte-date').value;
+    var device      = document.getElementById('rte-device').value.trim();
+    var model       = document.getElementById('rte-model').value.trim();
+    var qty         = document.getElementById('rte-qty').value;
+    var rack        = document.getElementById('rte-rack').value.trim();
+    var csiStaff    = document.getElementById('rte-csi').value.trim();
+    var returnStaff = document.getElementById('rte-retstaff').value.trim();
+    var errEl       = document.getElementById('rte-err');
+    errEl.textContent = '';
+
+    if (!date || !device || !model || !qty || !csiStaff || !returnStaff) {
+      errEl.textContent = '⚠ 請填寫所有欄位'; return;
+    }
+
+    var existingPhotos = Array.prototype.map.call(
+      document.getElementById('rte-existing-photos').querySelectorAll('.oe-photo-row'),
+      function(row) { return row.dataset.url || ''; }
+    ).filter(Boolean);
+    var newFiles = document.getElementById('rte-new-photos').files;
+
+    errEl.textContent = newFiles.length ? '上傳新照片中…' : '';
+
+    uploadPhotos(newFiles, function(newUrls) {
+      var merged = existingPhotos.concat(newUrls).slice(0, 5);
+      callApi({ action: 'updateInventoryReturn', rowIndex: rowIndex, date: date,
+        deviceType: device, model: model, quantity: qty, rack: rack,
+        csiStaff: csiStaff, returnStaff: returnStaff, photos: merged })
+        .then(function(d) {
+          if (d.success) { closeRetEdit(); adminQueryReturn(); }
+          else { errEl.textContent = '儲存失敗：' + (d.error || '未知'); }
+        }).catch(function() { errEl.textContent = '網路錯誤'; });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var rteNewPhotos = document.getElementById('rte-new-photos');
+    if (rteNewPhotos) {
+      rteNewPhotos.addEventListener('change', function() {
+        var preview = document.getElementById('rte-new-preview');
+        preview.innerHTML = '';
+        var files = Array.prototype.slice.call(this.files, 0, 5);
+        files.forEach(function(f) {
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            var img = document.createElement('img');
+            img.src = e.target.result;
+            img.style.cssText = 'width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid #ddd';
+            preview.appendChild(img);
+          };
+          reader.readAsDataURL(f);
+        });
+      });
+    }
+  });
+
   // ── 庫存總覽 ─────────────────────────────────────────────────────
   function adminQuerySummary() {
     var el = document.getElementById('res-summary');
@@ -1768,21 +2008,24 @@
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
-        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫</th><th>出庫明細</th><th>現有庫存</th></tr>' +
+        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫</th><th>出庫明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th></tr>' +
         data.map(function(r) {
           var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
           var inDetail  = (r.inTx  || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           var outDetail = (r.outTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
+          var retDetail = (r.retTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           return '<tr>' +
             '<td>' + esc(r.model) + '</td>' +
             '<td style="text-align:center">' + r.totalIn + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + inDetail + '</td>' +
             '<td style="text-align:center">' + r.totalOut + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + outDetail + '</td>' +
+            '<td style="text-align:center">' + (r.totalRet || 0) + '</td>' +
+            '<td style="font-size:12px;color:#555;line-height:1.8">' + retDetail + '</td>' +
             '<td style="text-align:center;' + style + '">' + r.current + '</td>' +
             '</tr>';
         }).join('') +
-        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
         '</table>';
     }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
@@ -1994,6 +2237,34 @@
 </div>
 
 <!-- Modal: 編輯出庫紀錄 -->
+<div id="ret-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
+    <h3 style="margin:0 0 16px;font-size:16px">編輯回庫紀錄</h3>
+    <input type="hidden" id="rte-row">
+    <div class="form-group"><label>日期</label><input type="date" id="rte-date"></div>
+    <div class="form-group"><label>回庫設備</label><input type="text" id="rte-device"></div>
+    <div class="form-group"><label>回庫型號</label><input type="text" id="rte-model" list="model-datalist" autocomplete="off"></div>
+    <div class="form-group"><label>回庫數量</label><input type="number" id="rte-qty" min="1"></div>
+    <div class="form-group"><label>Rack 編號</label><input type="text" id="rte-rack"></div>
+    <div class="form-group"><label>CSI 回庫人員</label><input type="text" id="rte-csi"></div>
+    <div class="form-group"><label>回庫人員</label><input type="text" id="rte-retstaff"></div>
+    <div class="form-group">
+      <label>現有照片</label>
+      <div id="rte-existing-photos" style="font-size:13px;padding:6px 0;line-height:2"></div>
+    </div>
+    <div class="form-group">
+      <label>新增照片（會附加到現有照片後，總數上限 5 張）</label>
+      <input type="file" id="rte-new-photos" accept="image/*" multiple>
+      <div id="rte-new-preview" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+    </div>
+    <p id="rte-err" class="err"></p>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-teal" style="flex:1" onclick="saveRetEdit()">儲存</button>
+      <button class="btn btn-grey" style="flex:1" onclick="closeRetEdit()">取消</button>
+    </div>
+  </div>
+</div>
+
 <div id="out-edit-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:center;justify-content:center;padding:16px">
   <div style="background:white;border-radius:16px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
     <h3 style="margin:0 0 16px;font-size:16px">編輯出庫紀錄</h3>
