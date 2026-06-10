@@ -405,7 +405,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzX9ppWoho6O4Zi_uzULXqK6b1bRI-L_r3NgfqhCNtqlTbuhLm5zWF3BXVuEBD_s1V9/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz7e598ICmFgVNvA_cToxXDbkt6m716aTCPeQwx1P5Ysixv7DuAe3W6-C2yjMn5H7WC/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -2008,27 +2008,24 @@
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
-        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫</th><th>出庫明細</th><th>回庫</th><th>回庫明細</th><th>上架</th><th>上架明細</th><th>現有庫存</th></tr>' +
+        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫+上架</th><th>明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th></tr>' +
         data.map(function(r) {
           var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
           var inDetail   = (r.inTx   || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
-          var outDetail  = (r.outTx  || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
+          var usedDetail = (r.usedTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           var retDetail  = (r.retTx  || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
-          var rackDetail = (r.rackTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           return '<tr>' +
             '<td>' + esc(r.model) + '</td>' +
             '<td style="text-align:center">' + r.totalIn + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + inDetail + '</td>' +
-            '<td style="text-align:center">' + r.totalOut + '</td>' +
-            '<td style="font-size:12px;color:#555;line-height:1.8">' + outDetail + '</td>' +
+            '<td style="text-align:center">' + (r.totalUsed || 0) + '</td>' +
+            '<td style="font-size:12px;color:#555;line-height:1.8">' + usedDetail + '</td>' +
             '<td style="text-align:center">' + (r.totalRet || 0) + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + retDetail + '</td>' +
-            '<td style="text-align:center">' + (r.totalRack || 0) + '</td>' +
-            '<td style="font-size:12px;color:#555;line-height:1.8">' + rackDetail + '</td>' +
             '<td style="text-align:center;' + style + '">' + r.current + '</td>' +
             '</tr>';
         }).join('') +
-        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
         '</table>';
     }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
