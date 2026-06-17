@@ -367,6 +367,14 @@
   <button class="btn" onclick="adminQueryBarcode()">查詢</button>
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
   <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">上架紀錄查詢</label>
+  <div class="date-range">
+    <div class="form-group"><label>起始日期</label><input type="date" id="rack-date-from"></div>
+    <div class="form-group"><label>結束日期</label><input type="date" id="rack-date-to"></div>
+  </div>
+  <button class="btn" onclick="adminQueryRackByDate()">查詢上架紀錄</button>
+  <div id="res-rack-date" style="overflow-x:auto;margin-top:8px"></div>
+  <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">庫存入庫紀錄</label>
   <div class="date-range">
     <div class="form-group"><label>起始日期</label><input type="date" id="in-date-from"></div>
@@ -410,7 +418,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQkyGcBsX06Onmnw1NXkscgsygwopKqiMXi9elQe_iBr2hiNmWfzSq63QZhglexb-W/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyuYvijyBRCuXSwZ9lPC---VtOqUqd8txqeoHPZZYUoU-MPwpfbrQGM7M2cO48SMIxn/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -997,6 +1005,10 @@
     var rdt = document.getElementById('ret-date-to');
     if (rdf) rdf.value = today;
     if (rdt) rdt.value = today;
+    var rkdf = document.getElementById('rack-date-from');
+    var rkdt = document.getElementById('rack-date-to');
+    if (rkdf) rkdf.value = today;
+    if (rkdt) rkdt.value = today;
 
     function bindPhotoPreview(inputId, previewId) {
       var photoInput = document.getElementById(inputId);
@@ -1089,12 +1101,12 @@
       var el = document.getElementById('res-rack');
       if (!data.length) { el.innerHTML = '<p class="no-data">此機櫃目前無設備上架</p>'; return; }
       __rackEditStore = data;
-      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>設備型號</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th>時間</th><th></th></tr>' +
+      el.innerHTML = '<table><tr><th>U數</th><th>S/N</th><th>P/N</th><th>設備型號</th><th>設備用途</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th>時間</th><th></th></tr>' +
         data.map(function (r, i) {
           var row = r._row; var sheet = r._sheet;
           function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
           return '<tr><td>' + esc(r.uPosition) + '</td><td>' + esc(r.barcode) + '</td>' +
-            d(r.model) + d(r.deviceModel) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
+            d(r.model) + d(r.deviceModel) + d(r.usage) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
             '<td>' + esc(r.engineer) + '</td><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td style="display:flex;gap:4px;flex-wrap:nowrap">' +
               '<button onclick="openEditRack(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
@@ -1116,6 +1128,7 @@
     document.getElementById('re-mac2').value = r.mac2 || '';
     document.getElementById('re-extra1').value = r.extra1 || '';
     document.getElementById('re-extra2').value = r.extra2 || '';
+    document.getElementById('re-usage').value  = r.usage  || '';
     document.getElementById('re-err').textContent = '';
     document.getElementById('rack-edit-modal').style.display = 'flex';
   }
@@ -1131,10 +1144,12 @@
       mac1:        document.getElementById('re-mac1').value.trim(),
       mac2:        document.getElementById('re-mac2').value.trim(),
       extra1:      document.getElementById('re-extra1').value.trim(),
-      extra2:      document.getElementById('re-extra2').value.trim()
+      extra2:      document.getElementById('re-extra2').value.trim(),
+      usage:       document.getElementById('re-usage').value.trim()
     }).then(function(res) {
       if (res.success) {
         document.getElementById('rack-edit-modal').style.display = 'none';
+        if (typeof lastRackByDateQuery !== 'undefined' && lastRackByDateQuery) adminQueryRackByDate();
         adminQueryRack();
       } else {
         errEl.textContent = '儲存失敗：' + (res.error || '未知錯誤');
@@ -1148,18 +1163,73 @@
     callApi({ action: 'queryByBarcode', barcode: barcode }).then(function (data) {
       var el = document.getElementById('res-barcode');
       if (!data.length) { el.innerHTML = '<p class="no-data">查無此 S/N 紀錄</p>'; return; }
-      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>設備型號</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th></th></tr>' +
+      el.innerHTML = '<table><tr><th>時間</th><th>動作</th><th>機櫃</th><th>U數</th><th>設備型號</th><th>設備用途</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th></th></tr>' +
         data.map(function (r) {
           var row = r._row; var sheet = r._sheet;
           function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
           return '<tr><td>' + esc(fmtDate(r.timestamp)) + '</td>' +
             '<td class="' + (r.type === '上架' ? 'tag-out' : 'tag-in') + '">' + esc(r.type) + '</td>' +
             '<td>' + esc(r.rack) + '</td><td>' + esc(r.uPosition) + '</td>' +
-            d(r.deviceModel) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
+            d(r.deviceModel) + d(r.usage) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
             '<td>' + esc(r.engineer) + '</td>' +
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  // ── 上架日期查詢 ─────────────────────────────────────────────────
+  var lastRackByDateQuery = false;
+  var __rackDateStore = [];
+
+  function adminQueryRackByDate() {
+    var dateFrom = (document.getElementById('rack-date-from') || {}).value || '';
+    var dateTo   = (document.getElementById('rack-date-to')   || {}).value || '';
+    var el = document.getElementById('res-rack-date');
+    el.innerHTML = '<p class="no-data">查詢中…</p>';
+    lastRackByDateQuery = true;
+    callApi({ action: 'queryRackByDate', dateFrom: dateFrom, dateTo: dateTo }).then(function(data) {
+      __rackDateStore = data;
+      if (!data.length) { el.innerHTML = '<p class="no-data">此區間無上架紀錄</p>'; return; }
+      el.innerHTML = '<table>' +
+        '<tr><th>時間</th><th>S/N</th><th>P/N</th><th>機櫃</th><th>U數</th><th>設備型號</th><th>設備用途</th><th>MAC 1</th><th>MAC 2</th><th>其他一</th><th>其他二</th><th>工程師</th><th></th></tr>' +
+        data.map(function(r, i) {
+          var row = r._row; var sheet = r._sheet;
+          function d(v) { return '<td>' + (v ? esc(v) : '—') + '</td>'; }
+          return '<tr>' +
+            '<td style="white-space:nowrap">' + esc(fmtDate(r.timestamp)) + '</td>' +
+            '<td>' + esc(r.barcode) + '</td>' +
+            d(r.model) +
+            '<td>' + esc(r.rack) + '</td>' +
+            '<td>' + esc(r.uPosition) + '</td>' +
+            d(r.deviceModel) + d(r.usage) + d(r.mac1) + d(r.mac2) + d(r.extra1) + d(r.extra2) +
+            '<td>' + esc(r.engineer) + '</td>' +
+            '<td style="white-space:nowrap;display:flex;gap:4px">' +
+              '<button onclick="openEditRackFromDate(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
+              '<button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryRackByDate)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button>' +
+            '</td>' +
+            '</tr>';
+        }).join('') + '</table>';
+    }).catch(function() {
+      document.getElementById('res-rack-date').innerHTML = '<p class="no-data">查詢失敗</p>';
+    });
+  }
+
+  function openEditRackFromDate(i) {
+    var r = __rackDateStore[i];
+    if (!r) return;
+    __rackEditStore[999] = r; // 借用 store，用特殊 index
+    document.getElementById('re-idx').value = 999;
+    document.getElementById('re-row').value = r._row;
+    document.getElementById('re-sn').textContent = r.barcode;
+    document.getElementById('re-upos').value    = r.uPosition  || '';
+    document.getElementById('re-devmodel').value = r.deviceModel || '';
+    document.getElementById('re-mac1').value    = r.mac1  || '';
+    document.getElementById('re-mac2').value    = r.mac2  || '';
+    document.getElementById('re-extra1').value  = r.extra1 || '';
+    document.getElementById('re-extra2').value  = r.extra2 || '';
+    document.getElementById('re-usage').value   = r.usage  || '';
+    document.getElementById('re-err').textContent = '';
+    document.getElementById('rack-edit-modal').style.display = 'flex';
   }
 
   // ── OCR ─────────────────────────────────────────────────────────
@@ -2233,6 +2303,7 @@
     <div class="form-group"><label>MAC 2</label><input type="text" id="re-mac2"></div>
     <div class="form-group"><label>其他一</label><input type="text" id="re-extra1"></div>
     <div class="form-group"><label>其他二</label><input type="text" id="re-extra2"></div>
+    <div class="form-group"><label>設備用途</label><input type="text" id="re-usage" placeholder="例：Web Server、備援節點…"></div>
     <p id="re-err" style="color:#d93025;font-size:13px;margin:4px 0"></p>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button onclick="saveEditRack()" class="btn" style="flex:1">✓ 儲存</button>
