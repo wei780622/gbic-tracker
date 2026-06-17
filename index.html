@@ -286,6 +286,11 @@
   </div>
 
   <div class="form-group">
+    <label>設備用途</label>
+    <input type="text" id="io-usage" placeholder="例：機器學習、Web Server、外部租用…">
+  </div>
+
+  <div class="form-group">
     <label>照片（最多 5 張）</label>
     <input type="file" id="io-photos" accept="image/*" multiple style="margin-bottom:8px">
     <div id="io-photo-preview" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
@@ -405,7 +410,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzT-l14CUcLPMrq3eGqLho18TLucHP8UCR_L9jpspksHxeuNB6im7GzvgwydeuughdY/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQkyGcBsX06Onmnw1NXkscgsygwopKqiMXi9elQe_iBr2hiNmWfzSq63QZhglexb-W/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -730,6 +735,7 @@
         scanField('mac2-' + i, 'MAC 2') +
         scanField('extra1-' + i, '其他一') +
         scanField('extra2-' + i, '其他二') +
+        '<div style="margin-top:6px"><input type="text" id="usage-' + i + '" placeholder="設備用途（例：Web Server、備援節點）" style="width:100%;padding:7px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box"></div>' +
         '</div>';
     }).join('');
     document.getElementById('batch-err').textContent = '';
@@ -764,7 +770,8 @@
         mac1:        val('mac1-' + i),
         mac2:        val('mac2-' + i),
         extra1:      val('extra1-' + i),
-        extra2:      val('extra2-' + i)
+        extra2:      val('extra2-' + i),
+        usage:       val('usage-' + i)
       };
     });
     callApi({ action: 'recordBatch', type: currentAction, engineer: engineer, rack: rack, items: items })
@@ -1029,6 +1036,7 @@
     var rack      = document.getElementById('io-rack').value.trim();
     var csiStaff  = document.getElementById('io-csi').value.trim();
     var recipient = document.getElementById('io-recipient').value.trim();
+    var usage     = document.getElementById('io-usage').value.trim();
     var errEl     = document.getElementById('io-err');
     errEl.textContent = '';
 
@@ -1041,7 +1049,7 @@
 
     uploadPhotos(photoFiles, function(photoUrls) {
       callApi({ action: 'recordInventoryOut', date: date, deviceType: device, model: model,
-        quantity: qty, rack: rack, csiStaff: csiStaff, recipient: recipient, photos: photoUrls })
+        quantity: qty, rack: rack, csiStaff: csiStaff, recipient: recipient, usage: usage, photos: photoUrls })
         .then(function (data) {
           if (data.success) {
             document.getElementById('ok-title').textContent = '出庫紀錄已送出';
@@ -1695,7 +1703,7 @@
       __outStore = data;
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無出庫紀錄</p>'; return; }
       el.innerHTML = '<table>' +
-        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th><th>照片</th><th></th></tr>' +
+        '<tr><th>日期</th><th>領用設備</th><th>型號</th><th>數量</th><th>Rack</th><th>CSI出庫</th><th>領用人</th><th>設備用途</th><th>照片</th><th></th></tr>' +
         data.map(function (r, i) {
           var row = r._row; var sheet = r._sheet;
           var photoLinks = (r.photos || []).map(function(url, pi) {
@@ -1709,6 +1717,7 @@
             '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
             '<td>' + esc(r.csiStaff) + '</td>' +
             '<td>' + esc(r.recipient) + '</td>' +
+            '<td>' + (r.usage ? esc(r.usage) : '—') + '</td>' +
             '<td style="white-space:nowrap">' + (photoLinks || '—') + '</td>' +
             '<td style="white-space:nowrap;display:flex;gap:4px">' +
               '<button onclick="openOutEdit(' + i + ')" style="background:#1a73e8;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">編輯</button>' +
@@ -1753,6 +1762,7 @@
     document.getElementById('oe-rack').value      = r.rack      || '';
     document.getElementById('oe-csi').value       = r.csiStaff  || '';
     document.getElementById('oe-recipient').value = r.recipient || '';
+    document.getElementById('oe-usage').value     = r.usage     || '';
     renderExistingPhotos(r.photos || []);
     document.getElementById('oe-new-preview').innerHTML = '';
     document.getElementById('oe-new-photos').value = '';
@@ -1772,6 +1782,7 @@
     var rack      = document.getElementById('oe-rack').value.trim();
     var csiStaff  = document.getElementById('oe-csi').value.trim();
     var recipient = document.getElementById('oe-recipient').value.trim();
+    var usage     = document.getElementById('oe-usage').value.trim();
     var errEl     = document.getElementById('oe-err');
     errEl.textContent = '';
 
@@ -1793,7 +1804,7 @@
       var merged = existingPhotos.concat(newUrls).slice(0, 5);
       callApi({ action: 'updateInventoryOut', rowIndex: rowIndex, date: date,
         deviceType: device, model: model, quantity: qty, rack: rack,
-        csiStaff: csiStaff, recipient: recipient, photos: merged })
+        csiStaff: csiStaff, recipient: recipient, usage: usage, photos: merged })
         .then(function(d) {
           if (d.success) { closeOutEdit(); adminQueryOut(); }
           else { errEl.textContent = '儲存失敗：' + (d.error || '未知'); }
@@ -2008,14 +2019,18 @@
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
-        '<tr><th>型號</th><th>入庫</th><th>入庫明細</th><th>出庫+上架</th><th>明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th></tr>' +
+        '<tr><th>型號</th><th>設備用途</th><th>入庫</th><th>入庫明細</th><th>出庫+上架</th><th>明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th></tr>' +
         data.map(function(r) {
           var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
           var inDetail   = (r.inTx   || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           var usedDetail = (r.usedTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           var retDetail  = (r.retTx  || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
+          var purposeHtml = (r.purposes && r.purposes.length)
+            ? r.purposes.map(function(p){ return '<div style="white-space:nowrap;font-size:12px;color:#1a73e8">'+esc(p)+'</div>'; }).join('')
+            : '<span style="color:#ccc">—</span>';
           return '<tr>' +
             '<td>' + esc(r.model) + '</td>' +
+            '<td>' + purposeHtml + '</td>' +
             '<td style="text-align:center">' + r.totalIn + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + inDetail + '</td>' +
             '<td style="text-align:center">' + (r.totalUsed || 0) + '</td>' +
@@ -2025,7 +2040,7 @@
             '<td style="text-align:center;' + style + '">' + r.current + '</td>' +
             '</tr>';
         }).join('') +
-        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
         '</table>';
     }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
   }
@@ -2276,6 +2291,7 @@
     <div class="form-group"><label>Rack 編號</label><input type="text" id="oe-rack"></div>
     <div class="form-group"><label>CSI 出庫人員</label><input type="text" id="oe-csi"></div>
     <div class="form-group"><label>領用人員</label><input type="text" id="oe-recipient"></div>
+    <div class="form-group"><label>設備用途</label><input type="text" id="oe-usage" placeholder="例：機器學習、Web Server…"></div>
     <div class="form-group">
       <label>現有照片</label>
       <div id="oe-existing-photos" style="font-size:13px;padding:6px 0;line-height:2"></div>
