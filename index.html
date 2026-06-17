@@ -2089,8 +2089,8 @@
       if (!data.length) { el.innerHTML = '<p class="no-data">尚無庫存資料</p>'; return; }
       var total = data.reduce(function(s, r) { return s + r.current; }, 0);
       el.innerHTML = '<table>' +
-        '<tr><th>型號</th><th>設備用途</th><th>入庫</th><th>入庫明細</th><th>出庫+上架</th><th>明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th></tr>' +
-        data.map(function(r) {
+        '<tr><th>型號</th><th>設備用途</th><th>入庫</th><th>入庫明細</th><th>出庫+上架</th><th>明細</th><th>回庫</th><th>回庫明細</th><th>現有庫存</th><th>現場盤點</th><th>差異</th></tr>' +
+        data.map(function(r, ri) {
           var style = r.current < 0 ? 'color:#d93025;font-weight:600' : r.current === 0 ? 'color:#888' : 'color:#0f9d58;font-weight:600';
           var inDetail   = (r.inTx   || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
           var usedDetail = (r.usedTx || []).map(function(t){ return '<div style="white-space:nowrap;padding:1px 0">'+esc(t)+'</div>'; }).join('') || '—';
@@ -2108,11 +2108,35 @@
             '<td style="text-align:center">' + (r.totalRet || 0) + '</td>' +
             '<td style="font-size:12px;color:#555;line-height:1.8">' + retDetail + '</td>' +
             '<td style="text-align:center;' + style + '">' + r.current + '</td>' +
+            '<td style="text-align:center"><input type="number" id="phys-' + ri + '" min="0" placeholder="—" ' +
+              'style="width:64px;padding:4px 6px;border:1px solid #ddd;border-radius:6px;font-size:13px;text-align:center" ' +
+              'oninput="calcDiff(' + ri + ',' + r.current + ')"></td>' +
+            '<td id="diff-' + ri + '" style="text-align:center;font-weight:600;color:#888">—</td>' +
             '</tr>';
         }).join('') +
-        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td></tr>' +
+        '<tr style="background:#f0f4ff"><td><b>合計</b></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td style="text-align:center"><b>' + total + '</b></td><td></td><td></td></tr>' +
         '</table>';
     }).catch(function() { el.innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  function calcDiff(ri, current) {
+    var inp = document.getElementById('phys-' + ri);
+    var diffEl = document.getElementById('diff-' + ri);
+    if (!inp || !diffEl) return;
+    var val = inp.value;
+    if (val === '' || val === null) { diffEl.textContent = '—'; diffEl.style.color = '#888'; return; }
+    var phys = parseInt(val, 10);
+    var diff = phys - current;
+    if (diff > 0) {
+      diffEl.textContent = '+' + diff;
+      diffEl.style.color = '#1a73e8'; // 盤盈（現場多）
+    } else if (diff < 0) {
+      diffEl.textContent = String(diff);
+      diffEl.style.color = '#d93025'; // 盤虧（現場少）
+    } else {
+      diffEl.textContent = '✓ 0';
+      diffEl.style.color = '#0f9d58'; // 吻合
+    }
   }
 
   // ── snInfoBadge（掃描時查入庫來源/重複警告）─────────────────────
