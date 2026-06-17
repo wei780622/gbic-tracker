@@ -367,6 +367,13 @@
   <button class="btn" onclick="adminQueryBarcode()">查詢</button>
   <div id="res-barcode" style="overflow-x:auto;margin-top:8px"></div>
   <hr>
+  <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">依型號查詢異動紀錄</label>
+  <div class="form-group">
+    <input type="text" id="a-model" placeholder="輸入型號關鍵字（如 SR650、SFP-10G）" list="model-datalist" autocomplete="off">
+  </div>
+  <button class="btn btn-green" onclick="adminQueryByModel()">查詢型號異動</button>
+  <div id="res-model" style="overflow-x:auto;margin-top:8px"></div>
+  <hr>
   <label style="font-size:13px;color:#666;margin-bottom:8px;display:block">上架紀錄查詢</label>
   <div class="date-range">
     <div class="form-group"><label>起始日期</label><input type="date" id="rack-date-from"></div>
@@ -418,7 +425,7 @@
 </div>
 
 <script>
-  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyuYvijyBRCuXSwZ9lPC---VtOqUqd8txqeoHPZZYUoU-MPwpfbrQGM7M2cO48SMIxn/exec';
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwQXqhVnYve0VtSqRip-bIBr-905r_HbUhkYQkokMP5Grthb7Fl0CoefZy-f7FYzxVy/exec';
   const isAdmin = new URLSearchParams(window.location.search).get('mode') === 'admin';
 
   let currentAction = '';
@@ -1175,6 +1182,58 @@
             '<td><button onclick="deleteRecord(\'' + esc(sheet) + '\',' + row + ',adminQueryBarcode)" style="background:#d93025;color:white;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">刪除</button></td></tr>';
         }).join('') + '</table>';
     }).catch(function () { document.getElementById('res-barcode').innerHTML = '<p class="no-data">查詢失敗</p>'; });
+  }
+
+  // ── 依型號查詢 ───────────────────────────────────────────────────
+  function adminQueryByModel() {
+    var model = (document.getElementById('a-model') || {}).value || '';
+    model = model.trim();
+    if (!model) return;
+    var el = document.getElementById('res-model');
+    el.innerHTML = '<p class="no-data">查詢中…</p>';
+    callApi({ action: 'queryByModel', model: model }).then(function(data) {
+      if (!Array.isArray(data)) { el.innerHTML = '<p class="no-data">' + esc(data.error || '查詢失敗') + '</p>'; return; }
+      if (!data.length) { el.innerHTML = '<p class="no-data">查無「' + esc(model) + '」相關紀錄</p>'; return; }
+
+      // 統計摘要
+      var totals = { '入庫': 0, '出庫': 0, '回庫': 0, '上架': 0, '歸還': 0 };
+      data.forEach(function(r) { if (totals[r.type] !== undefined) totals[r.type] += (r.quantity || 0); });
+
+      var typeStyle = {
+        '入庫': 'background:#e6f4ea;color:#0f9d58',
+        '出庫': 'background:#f3e8fd;color:#7b2ff7',
+        '回庫': 'background:#e0f2f1;color:#00897b',
+        '上架': 'background:#e8f0fe;color:#1a73e8',
+        '歸還': 'background:#fff3e0;color:#e37400'
+      };
+
+      var summaryHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+        Object.keys(totals).map(function(t) {
+          if (!totals[t]) return '';
+          var s = typeStyle[t] || '';
+          return '<div style="' + s + ';border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600">' +
+            t + '：' + totals[t] + (t === '上架' || t === '歸還' ? ' 台' : ' 件') + '</div>';
+        }).filter(Boolean).join('') +
+        '</div>';
+
+      el.innerHTML = summaryHtml + '<table>' +
+        '<tr><th>時間</th><th>動作</th><th>型號</th><th>數量/台</th><th>人員</th><th>Rack</th><th>S/N</th><th>設備用途</th></tr>' +
+        data.map(function(r) {
+          var s = typeStyle[r.type] || '';
+          return '<tr>' +
+            '<td style="white-space:nowrap">' + esc(fmtDate(r.date)) + '</td>' +
+            '<td><span style="' + s + ';border-radius:5px;padding:2px 8px;font-size:12px;font-weight:600">' + esc(r.type) + '</span></td>' +
+            '<td>' + esc(r.model) + '</td>' +
+            '<td style="text-align:center">' + (r.quantity || '—') + '</td>' +
+            '<td>' + esc(r.person || '—') + '</td>' +
+            '<td>' + (r.rack ? esc(r.rack) : '—') + '</td>' +
+            '<td style="font-size:12px">' + (r.barcode ? esc(r.barcode) : '—') + '</td>' +
+            '<td>' + (r.usage ? esc(r.usage) : '—') + '</td>' +
+            '</tr>';
+        }).join('') + '</table>';
+    }).catch(function() {
+      document.getElementById('res-model').innerHTML = '<p class="no-data">查詢失敗</p>';
+    });
   }
 
   // ── 上架日期查詢 ─────────────────────────────────────────────────
